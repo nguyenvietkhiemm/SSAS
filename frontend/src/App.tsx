@@ -1,14 +1,14 @@
 // src/App.tsx
 // "use client"
 
-// // import { useState } from "react"
-// // import { Card } from "./components/ui/card"
-// // import { Button } from "./components/ui/button"
-// // import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select"
+// import { useState } from "react"
+// import { Card } from "./components/ui/card"
+// import { Button } from "./components/ui/button"
+// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select"
 // // import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs"
-// // import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./components/ui/table"
-// // import { Label } from "./components/ui/label"
-// // import { ChevronDown, ChevronUp, RotateCw, Scissors } from 'lucide-react'
+// import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./components/ui/table"
+// import { Label } from "./components/ui/label"
+// import { ChevronDown, ChevronUp, RotateCw, Scissors } from 'lucide-react'
 
 // type DrillLevel = {
 //   product: number;
@@ -149,7 +149,7 @@
 //   // Mô phỏng dữ liệu hiển thị
 //   const getViewData = (): ViewData => {
 //     const { rows, columns, filters } = currentView.dimensions;
-    
+
 //     const getDimensionValues = (dimension: keyof DimensionsData, level: number): string[] => {
 //       switch (dimension) {
 //         case "product":
@@ -159,7 +159,7 @@
 //             const category = filters.productCategory || "Electronics";
 //             return initialData.dimensions.product.items[category] || [];
 //           }
-        
+
 //         case "location":
 //           if (level === 0) {
 //             return initialData.dimensions.location.states;
@@ -167,7 +167,7 @@
 //             const state = filters.state || "California";
 //             return initialData.dimensions.location.cities[state] || [];
 //           }
-        
+
 //         case "customer":
 //           if (level === 0) {
 //             return initialData.dimensions.customer.types;
@@ -175,10 +175,10 @@
 //             const type = filters.customerType || "Tourist";
 //             return initialData.dimensions.customer.segments[type] || [];
 //           }
-        
+
 //         case "time":
 //           return initialData.dimensions.time;
-        
+
 //         default:
 //           return [];
 //       }
@@ -509,156 +509,506 @@
 //   )
 // }
 
-// src/App.tsx
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useEffect, useState } from "react"
 import { Card } from "./components/ui/card"
-// import { Input } from "./components/ui/input" // Giả sử bạn có component Input từ Shadcn UI
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./components/ui/table"
+import { Button } from "./components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./components/ui/table"
 import { Label } from "./components/ui/label"
+import { ChevronDown, ChevronUp, RotateCw, Scissors, Loader2 } from 'lucide-react'
 
-// Kiểu dữ liệu động cho item từ API
-type ApiDataItem = {
-  [key: string]: any; // Cho phép bất kỳ key dạng string với bất kỳ kiểu giá trị nào
+// Define the type for a single record from the API
+type OrderRecord = {
+  "City Name": string;
+  "Customer ID": string;
+  "Customer Name": string;
+  Day: string;
+  Month: string;
+  "Order ID": string;
+  Quarter: string;
+  State: string;
+  "Total Amount": number;
+  Year: string;
+  // Add other potential keys from the API response if needed
+  [key: string]: any; // Allow for other keys
 };
 
-export default function DynamicApiDataTable() {
-  const [rawData, setRawData] = useState<ApiDataItem[]>([]);
-  const [columnKeys, setColumnKeys] = useState<string[]>([]); // Để lưu trữ danh sách các tên cột động
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState<string>("");
+// Define the available dimensions based on the API keys
+const availableDimensions = [
+  "Order ID",
+  "Customer ID",
+  "Customer Name",
+  "Day",
+  "Month",
+  "Quarter",
+  "Year",
+  "City Name",
+  "State",
+];
 
-  // 1. Fetch dữ liệu từ API và xác định các cột
+// Define the available measures (based on numeric keys)
+const availableMeasures = [
+    "Total Amount",
+    // Add other numeric keys if available from the API
+];
+
+// Define the structure for the current view state
+type CurrentView = {
+  measure: string;
+  dimensions: {
+    selectedColumns: string[]; // Which keys from the API to show as columns
+    filters: Record<string, string>; // Generic filters { key: value }
+  };
+};
+
+// ViewData structure to feed the table component
+type ViewData = {
+  headers: string[];
+  rows: OrderRecord[]; // Rows are just the filtered API records
+};
+
+
+export default function OLAPOperations() {
+  // State for fetched API data
+  const [apiData, setApiData] = useState<OrderRecord[]>([]);
+  // State for loading indicator
+  const [isLoading, setIsLoading] = useState(true);
+  // State for errors
+  const [error, setError] = useState<string | null>(null);
+
+  // State for the current view/query configuration
+  const [currentView, setCurrentView] = useState<CurrentView>({
+    measure: "Total Amount", // Default measure
+    dimensions: {
+      selectedColumns: ["Order ID", "Customer Name", "Total Amount"], // Default columns to show
+      filters: {
+        // Default filter (e.g., initial time filter)
+        "Quarter": "2", // Example: Start with Q2 data based on the API example
+        "Year": "2025", // Example: Start with 2025 data based on the API example
+      },
+    },
+  });
+
+  // Base URL for the mock API
+  const API_BASE_URL = "http://localhost:5000/api";
+  const API_LIMIT = 100; // Example limit
+  const API_OFFSET = 0;
+
+  const buildApiUrl = (view: CurrentView): string => {
+    const baseUrl = API_BASE_URL;
+    const params: string[] = [];
+  
+    // Add limit & offset first
+    params.push(`limit=${API_LIMIT}`);
+    params.push(`offset=${API_OFFSET}`);
+  
+    // Add dimensions
+    view.dimensions.selectedColumns.forEach(dim => {
+      if (availableDimensions.includes(dim) || availableMeasures.includes(dim)) {
+        params.push(`dimensions=${encodeURIComponent(dim)}`);
+      }
+    });
+  
+    // Add filters
+    Object.entries(view.dimensions.filters).forEach(([key, value]) => {
+      if (
+        value !== "" &&
+        value !== "all" &&
+        (availableDimensions.includes(key) || availableMeasures.includes(key))
+      ) {
+        params.push(`filter=${encodeURIComponent(`${key}:${value}`)}`);
+      }
+    });
+  
+    // Join and return full URL
+    return `${baseUrl}?${params.join("&")}`;
+  };
+
+  // Effect to fetch data whenever the view configuration changes
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       setError(null);
+      const url = buildApiUrl(currentView);
+      console.log("Fetching data from:", url); // Log the URL for debugging
+
       try {
-        // THAY THẾ BẰNG URL API THẬT CỦA BẠN
-        const response = await fetch('http://localhost:5000/api?dimensions=Customer%20ID&dimensions=Customer%20Name&dimensions=City%20Name&dimensions=Day&dimensions=Order%20ID&dimensions=Phone');
+        const response = await fetch(url);
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+          const errorText = await response.text();
+          throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
         }
-        const data: ApiDataItem[] = await response.json();
-        setRawData(data);
+        const data = await response.json();
 
-        // Xác định các tên cột (keys) một cách động
-        if (data.length > 0) {
-          // Cách tiếp cận tốt hơn: lấy tất cả các key duy nhất từ tất cả các item
-          // để đảm bảo không bỏ sót cột nào nếu các item có cấu trúc hơi khác nhau.
-          const allKeys = new Set<string>();
-          data.forEach(item => {
-            Object.keys(item).forEach(key => allKeys.add(key));
-          });
-          // Sắp xếp các key để thứ tự cột ổn định
-          setColumnKeys(Array.from(allKeys).sort());
+        // Assuming the API returns an array of records directly
+        if (Array.isArray(data)) {
+             setApiData(data);
         } else {
-          setColumnKeys([]);
+             // Handle cases where the API might return data in a different structure
+             console.error("API returned data in unexpected format:", data);
+             setError("Failed to fetch data: Unexpected format");
+             setApiData([]); // Clear data on format error
         }
 
-      } catch (e) {
-        if (e instanceof Error) {
-          setError(e.message);
-        } else {
-          setError("An unknown error occurred");
-        }
-        console.error("Error fetching data:", e);
-        setColumnKeys([]); // Đảm bảo columnKeys rỗng khi có lỗi
+      } catch (e: any) {
+        console.error("Fetch error:", e);
+        setError(`Failed to fetch data: ${e.message}`);
+        setApiData([]); // Clear data on error
       } finally {
         setIsLoading(false);
       }
     };
+
     fetchData();
-  }, []);
+  }, [currentView]); // Depend on currentView to refetch when it changes
 
+  // Prepare data for the table based on fetched API data and selected columns
+  const getViewData = (): ViewData => {
+    // Headers are the keys currently selected as columns
+    const headers = currentView.dimensions.selectedColumns;
 
-  // 2. Lọc dữ liệu để hiển thị dựa trên searchTerm
-  const displayedData = useMemo(() => {
-    if (!searchTerm.trim()) { // Bỏ qua việc lọc nếu searchTerm rỗng hoặc chỉ có khoảng trắng
-      return rawData;
+    // Rows are the fetched API data records
+    const rows = apiData;
+
+    return { headers, rows };
+  };
+
+  // OLAP operations based on manipulating selected columns and filters
+
+  // "Drill Down" means adding a dimension to the selected columns
+  const drillDown = (dimension: string) => {
+    // Add the dimension if it's not already selected and is available
+    if (!currentView.dimensions.selectedColumns.includes(dimension) && (availableDimensions.includes(dimension) || availableMeasures.includes(dimension))) {
+      setCurrentView(prevView => ({
+        ...prevView,
+        dimensions: {
+          ...prevView.dimensions,
+          selectedColumns: [...prevView.dimensions.selectedColumns, dimension],
+        },
+      }));
     }
-    const lowercasedSearchTerm = searchTerm.toLowerCase();
-    return rawData.filter(item => {
-      // Tìm kiếm trong tất cả các giá trị của item (đã được xác định bởi columnKeys)
-      return columnKeys.some(key => {
-        const value = item[key];
-        // Chuyển giá trị sang string để tìm kiếm, xử lý cả null và undefined
-        return String(value ?? '').toLowerCase().includes(lowercasedSearchTerm);
-      });
-    });
-  }, [rawData, searchTerm, columnKeys]);
+  };
+
+  // "Roll Up" means removing a dimension from the selected columns
+  const rollUp = (dimension: string) => {
+    // Remove the dimension if it is currently selected
+    if (currentView.dimensions.selectedColumns.includes(dimension)) {
+      setCurrentView(prevView => ({
+        ...prevView,
+        dimensions: {
+          ...prevView.dimensions,
+          selectedColumns: prevView.dimensions.selectedColumns.filter(col => col !== dimension),
+        },
+      }));
+    }
+  };
+
+  // "Slice" means adding/changing a filter
+  const slice = (dimension: string, value: string) => {
+     // Only allow slicing on available dimensions
+    if (availableDimensions.includes(dimension) || availableMeasures.includes(dimension)) {
+        setCurrentView(prevView => ({
+            ...prevView,
+            dimensions: {
+                ...prevView.dimensions,
+                filters: {
+                    ...prevView.dimensions.filters,
+                    [dimension]: value,
+                },
+            },
+        }));
+    }
+  };
+
+    // Remove a specific filter
+    const removeFilter = (dimension: string) => {
+        setCurrentView(prevView => {
+            const newFilters = { ...prevView.dimensions.filters };
+            delete newFilters[dimension];
+            return {
+                ...prevView,
+                dimensions: {
+                    ...prevView.dimensions,
+                    filters: newFilters,
+                },
+            };
+        });
+    };
 
 
-  if (isLoading) {
-    return <div className="container mx-auto py-8 text-center">Đang tải dữ liệu...</div>;
-  }
+  // "Pivot" - In the context of a flat API, traditional pivot (swapping row/column headers in an aggregate table) isn't directly applicable.
+  // We will disable this button as it doesn't fit the new data model and API interaction.
+  const pivot = () => {
+    console.warn("Pivot operation is not directly supported with a flat API response structure.");
+    // If a new interpretation of pivot is needed (e.g., selecting a 'row' dimension),
+    // this function would need to be re-implemented accordingly, likely requiring
+    // client-side aggregation or a different API endpoint.
+  };
 
-  if (error) {
-    return <div className="container mx-auto py-8 text-center text-red-500">Lỗi: {error} <br /> Vui lòng kiểm tra URL API và thử lại.</div>;
-  }
+  // Change Measure - The API structure currently only shows "Total Amount" as a measure.
+  // This function is kept but the UI only offers the available measures.
+  const changeMeasure = (measure: string) => {
+    if (availableMeasures.includes(measure)) {
+        setCurrentView(prevView => ({
+            ...prevView,
+            measure,
+        }));
+    }
+  };
+
+   // Determine dimensions not currently selected as columns
+   const dimensionsNotSelected = availableDimensions.filter(dim => !currentView.dimensions.selectedColumns.includes(dim));
+   const measuresNotSelected = availableMeasures.filter(measure => !currentView.dimensions.selectedColumns.includes(measure));
+   const allNotSelected = [...dimensionsNotSelected, ...measuresNotSelected];
+
+
+   // Determine dimensions currently selected as columns (can be rolled up)
+   const dimensionsSelected = availableDimensions.filter(dim => currentView.dimensions.selectedColumns.includes(dim));
+   const measuresSelected = availableMeasures.filter(measure => currentView.dimensions.selectedColumns.includes(measure));
+    const allSelected = [...dimensionsSelected, ...measuresSelected];
+
+
+  // Prepare data for the table
+  const viewData = getViewData();
+
+  // Xác định tiêu đề cho các chiều/phép đo (could be simplified to just return the key name if they are descriptive)
+  const getDisplayTitle = (key: string): string => {
+    switch (key) {
+        case "Order ID": return "Mã Đơn hàng";
+        case "Customer ID": return "Mã Khách hàng";
+        case "Customer Name": return "Tên Khách hàng";
+        case "Day": return "Ngày";
+        case "Month": return "Tháng";
+        case "Quarter": return "Quý";
+        case "Year": return "Năm";
+        case "City Name": return "Thành phố";
+        case "State": return "Bang";
+        case "Total Amount": return "Tổng tiền";
+      default:
+        return key; // Fallback to the key itself
+    }
+  };
 
   return (
     <div className="container mx-auto py-8">
-      <h1 className="text-3xl font-bold mb-6 text-center">Bảng Dữ Liệu Động từ API</h1>
+      <h1 className="text-3xl font-bold mb-6 text-center">Phân tích Dữ liệu từ API</h1>
 
-      {/* Phần Bộ lọc chung */}
-      <Card className="p-4 mb-6">
-        <div className="flex flex-col sm:flex-row gap-4 items-center">
-          {/* <Input
-            type="text"
-            placeholder="Tìm kiếm trong bảng..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full sm:max-w-xs md:max-w-sm" // Điều chỉnh độ rộng cho các màn hình
-          /> */}
-          <span className="text-sm text-gray-600 dark:text-gray-400">
-            Hiển thị {displayedData.length} / {rawData.length} mục
-          </span>
-        </div>
-      </Card>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {/* Drill Down (Add Column) */}
+        <Card className="p-4">
+          <div className="flex flex-col space-y-2">
+            <h3 className="font-medium flex items-center">
+              <ChevronDown className="mr-2 h-4 w-4" />
+              Khoan xuống (Thêm cột)
+            </h3>
+            <p className="text-sm text-gray-500">Thêm cột/chiều vào bảng</p>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              {allNotSelected.length > 0 ? (
+                  allNotSelected.map(dim => (
+                    <Button
+                        key={dim}
+                        onClick={() => drillDown(dim)}
+                        variant="outline"
+                        size="sm"
+                    >
+                       {getDisplayTitle(dim)}
+                    </Button>
+                  ))
+              ) : (
+                  <p className="text-sm text-gray-500 col-span-2">Không có chiều nào khả dụng để thêm.</p>
+              )}
+            </div>
+          </div>
+        </Card>
 
-      {/* Bảng Dữ Liệu */}
-      {columnKeys.length > 0 ? (
-        <Card className="p-0 md:p-4"> {/* Giảm padding trên mobile để bảng rộng hơn */}
+        {/* Roll Up (Remove Column) */}
+        <Card className="p-4">
+          <div className="flex flex-col space-y-2">
+            <h3 className="font-medium flex items-center">
+              <ChevronUp className="mr-2 h-4 w-4" />
+              Cuộn lên (Bỏ cột)
+            </h3>
+            <p className="text-sm text-gray-500">Loại bỏ cột/chiều khỏi bảng</p>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+             {allSelected.length > 0 ? (
+                 allSelected.map(dim => (
+                    <Button
+                         key={dim}
+                         onClick={() => rollUp(dim)}
+                         variant="outline"
+                         size="sm"
+                         disabled={currentView.dimensions.selectedColumns.length <= 1} // Don't remove the last column
+                     >
+                        {getDisplayTitle(dim)}
+                     </Button>
+                 ))
+             ) : (
+                 <p className="text-sm text-gray-500 col-span-2">Không có cột nào để loại bỏ.</p>
+             )}
+            </div>
+          </div>
+        </Card>
+
+        {/* Slice (Filtering) */}
+        <Card className="p-4">
+          <div className="flex flex-col space-y-2">
+            <h3 className="font-medium flex items-center">
+              <Scissors className="mr-2 h-4 w-4" />
+              Chiếu chọn (Lọc)
+            </h3>
+            <p className="text-sm text-gray-500">Lọc dữ liệu theo chiều</p>
+            <div className="flex flex-col space-y-2 mt-2">
+               {/* Example: Filter by Quarter */}
+              <Label htmlFor="filter-quarter">Quý:</Label>
+               <Select
+                   value={currentView.dimensions.filters["Quarter"] || ""}
+                   onValueChange={(value) => slice("Quarter", value)}
+                   name="filter-quarter"
+               >
+                 <SelectTrigger className="h-8">
+                   <SelectValue placeholder="Chọn quý" />
+                 </SelectTrigger>
+                 <SelectContent>
+                   <SelectItem value="all">Tất cả Quý</SelectItem> {/* Option to remove filter */}
+                   {/* Assuming quarters Q1-Q4 */}
+                   {["1", "2", "3", "4"].map(q => (
+                       <SelectItem key={`Q${q}`} value={q}>
+                           {`Quý ${q}`}
+                       </SelectItem>
+                   ))}
+                 </SelectContent>
+               </Select>
+
+                {/* Example: Filter by Year */}
+                <Label htmlFor="filter-year">Năm:</Label>
+                <Select
+                    value={currentView.dimensions.filters["Year"] || ""}
+                    onValueChange={(value) => slice("Year", value)}
+                    name="filter-year"
+                >
+                    <SelectTrigger className="h-8">
+                        <SelectValue placeholder="Chọn năm" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Tất cả Năm</SelectItem> {/* Option to remove filter */}
+                         {/* Assuming years 2023-2025 */}
+                        {["2023", "2024", "2025"].map(year => (
+                            <SelectItem key={year} value={year}>
+                                {year}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+
+
+              {/* Measure Selection (Slice on Measure is less common, but changing measure is like slicing the cube) */}
+              <Label htmlFor="select-measure">Phép đo:</Label>
+              <Select value={currentView.measure} onValueChange={changeMeasure} name="select-measure">
+                <SelectTrigger className="h-8">
+                  <SelectValue placeholder="Chọn phép đo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableMeasures.map(measure => (
+                      <SelectItem key={measure} value={measure}>{getDisplayTitle(measure)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </Card>
+
+        {/* Pivot - Disabled/Removed as it doesn't apply to flat data display */}
+        <Card className="p-4 opacity-50 cursor-not-allowed">
+          <div className="flex flex-col space-y-2">
+            <h3 className="font-medium flex items-center">
+              <RotateCw className="mr-2 h-4 w-4" />
+              Xoay (Pivot)
+            </h3>
+            <p className="text-sm text-gray-500">Không khả dụng với dữ liệu phẳng từ API</p>
+             {/* Display current "Row" (implicit) and "Columns" */}
+             <div className="flex flex-col space-y-2 mt-2">
+               <div className="flex items-center justify-between">
+                 <Label>Cột hiển thị:</Label>
+               </div>
+               <ul className="text-sm text-gray-700 list-disc list-inside">
+                   {currentView.dimensions.selectedColumns.map(col => (
+                       <li key={col}>{getDisplayTitle(col)}</li>
+                   ))}
+               </ul>
+             </div>
+             <Button onClick={pivot} variant="outline" className="mt-2" disabled>
+                Xoay bảng
+             </Button>
+          </div>
+        </Card>
+      </div>
+
+      <Card className="p-6">
+         <h2 className="text-xl font-semibold mb-4">
+           Dữ liệu: {getDisplayTitle(currentView.measure)}
+            {Object.entries(currentView.dimensions.filters).map(([key, value]) =>
+                <span key={key} className="ml-4 text-base font-normal text-gray-600">
+                    {getDisplayTitle(key)}: {value}
+                    {/* Optional: Add a way to remove filters */}
+                    {/* <button onClick={() => removeFilter(key)} className="ml-1 text-red-500">&times;</button> */}
+                </span>
+            )}
+         </h2>
+
+        {isLoading && (
+            <div className="flex items-center justify-center p-8">
+                <Loader2 className="mr-2 h-6 w-6 animate-spin" /> Đang tải dữ liệu...
+            </div>
+        )}
+
+        {error && (
+            <div className="p-4 text-red-700 bg-red-100 border border-red-200 rounded">
+                Lỗi: {error}
+            </div>
+        )}
+
+        {!isLoading && !error && viewData.rows.length === 0 && (
+             <div className="p-4 text-gray-700 bg-gray-100 border border-gray-200 rounded">
+                Không tìm thấy dữ liệu nào khớp với bộ lọc hiện tại.
+             </div>
+        )}
+
+        {!isLoading && !error && viewData.rows.length > 0 && (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  {columnKeys.map(key => (
-                    <TableHead key={key} className="whitespace-nowrap">{key}</TableHead>
+                   {/* Render headers based on selectedColumns */}
+                  {viewData.headers.map((headerKey) => (
+                    <TableHead key={headerKey} className="text-center min-w-[120px]">
+                      {getDisplayTitle(headerKey)}
+                    </TableHead>
                   ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {displayedData.length > 0 ? (
-                  displayedData.map((item, index) => (
-                    // Sử dụng index làm một phần của key nếu không có ID duy nhất từ item
-                    <TableRow key={`row-${index}`}>
-                      {columnKeys.map(key => (
-                        <TableCell key={`${key}-${index}`} className="whitespace-nowrap">
-                          {/* Chuyển giá trị sang String để hiển thị, xử lý null/undefined thành chuỗi rỗng */}
-                          {item[key] === null || typeof item[key] === 'undefined' ? '' : String(item[key])}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={columnKeys.length} className="text-center h-24">
-                      {searchTerm ? "Không tìm thấy kết quả phù hợp." : "Không có dữ liệu."}
-                    </TableCell>
+                 {/* Render rows based on apiData */}
+                {viewData.rows.map((row, rowIndex) => (
+                  <TableRow key={`row-${rowIndex}`}> {/* Use row index or unique ID from data if available */}
+                    {viewData.headers.map((headerKey, colIndex) => (
+                       <TableCell key={`${rowIndex}-${headerKey}`} className={`text-${typeof row[headerKey] === 'number' ? 'center' : 'left'}`}>
+                          {/* Format number values */}
+                         {typeof row[headerKey] === 'number'
+                            ? row[headerKey].toLocaleString()
+                            : row[headerKey]?.toString() // Handle null/undefined
+                          }
+                       </TableCell>
+                    ))}
                   </TableRow>
-                )}
+                ))}
+                {/* Removed aggregate total row/column as it doesn't apply to flat data display */}
               </TableBody>
             </Table>
           </div>
-        </Card>
-      ) : (
-         !isLoading && <div className="text-center py-10 text-gray-500">Không có dữ liệu hoặc không thể xác định được các cột từ API.</div>
-      )}
+        )}
+      </Card>
     </div>
-  );
+  )
 }

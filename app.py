@@ -16,7 +16,6 @@ CORS(app)  # Cho phép tất cả domain truy cập (hoặc tùy chỉnh origin)
 
 @app.route('/api')
 def query():
-    dimensions = ["Customer ID", "Customer Name", "City Name", "Day", "Order ID"]
     dimensions = request.args.getlist('dimensions')
     limit = int(request.args.get('limit', 10))
     offset = int(request.args.get('offset', 0))
@@ -24,6 +23,8 @@ def query():
     mdx = generate_mdx(dimensions=dimensions,
                        limit=limit, 
                        offset=offset)
+
+    print(mdx)
 
     results = []
     with Pyadomd(conn_str) as conn:
