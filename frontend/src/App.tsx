@@ -623,7 +623,8 @@ export default function OLAPOperations() {
     });
   
     // Join and return full URL
-    return `${baseUrl}?${params.join("&")}`;
+    // return `${baseUrl}?${params.join("&")}`;
+    return "http://localhost:5000/api?dimensions=Customer%20ID&dimensions=Order%20ID&limit=100&offset=0%20&measure_filters={%22Total%20Amount%22:%20%22%3C%204000%22}%20&dimension_filters={%22Customer%20ID%22:%20%22cu0001%22}"
   };
 
   // Effect to fetch data whenever the view configuration changes

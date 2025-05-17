@@ -17,15 +17,27 @@ CORS(app)  # Cho phép tất cả domain truy cập (hoặc tùy chỉnh origin)
 @app.route('/api')
 def query():
     dimensions = request.args.getlist('dimensions')
-    limit = int(request.args.get('limit', 10))
+    limit = int(request.args.get('limit', None))
     offset = int(request.args.get('offset', 0))
+    measure_filters = request.args.get('measure_filters')
+    dimension_filters = request.args.get('dimension_filters')
+
+    if measure_filters:
+        measure_filters = json.loads(measure_filters)
+    else:
+        measure_filters = {}
+
+    if dimension_filters:
+        dimension_filters = json.loads(dimension_filters)
+    else:
+        dimension_filters = {}
 
     mdx = generate_mdx(dimensions=dimensions,
+                       measure_filters=measure_filters,
+                       dimension_filters=dimension_filters,
                        limit=limit, 
                        offset=offset)
-
     print(mdx)
-
     results = []
     with Pyadomd(conn_str) as conn:
         with conn.cursor().execute(mdx) as cur:

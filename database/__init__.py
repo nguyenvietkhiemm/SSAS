@@ -52,8 +52,8 @@ def build_key_map():
 
     return key_map
 
-key_map = build_key_map()
+# key_map = build_key_map()
 
-with open('./key_map.json', 'w', encoding='utf-8') as f:
-    json.dump(key_map, f, ensure_ascii=False, indent=4)
-print(f"=== Saved key_map to {'./key_map.json'} ===")
+# with open('./key_map.json', 'w', encoding='utf-8') as f:
+#     json.dump(key_map, f, ensure_ascii=False, indent=4)
+# print(f"=== Saved key_map to {'./key_map.json'} ===")
