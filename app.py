@@ -128,7 +128,7 @@ def get_unique_values():
     if not hierarchy_path:
         return jsonify({"error": f"Unknown or unsupported dimension for unique values: {dimension_key_from_frontend}"}), 404
 
-    mdx_query = f"SELECT {{{hierarchy_path}.Members}} ON COLUMNS FROM [Cube]"
+    mdx_query = f"SELECT {{{hierarchy_path}.Members}} ON COLUMNS FROM [Warehouse]"
     print(f"Executing MDX for unique values: {mdx_query}")
 
     values = []
