@@ -1,1015 +1,1325 @@
-// src/App.tsx
 // "use client"
 
-// import { useState } from "react"
+// import { useEffect, useState, useCallback, useMemo } from "react"
 // import { Card } from "./components/ui/card"
 // import { Button } from "./components/ui/button"
 // import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select"
-// // import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs"
 // import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./components/ui/table"
 // import { Label } from "./components/ui/label"
-// import { ChevronDown, ChevronUp, RotateCw, Scissors } from 'lucide-react'
+// import { ChevronDown, ChevronUp, RotateCw, Scissors, Loader2, XCircle } from 'lucide-react' // Added XCircle for filter removal
 
-// type DrillLevel = {
-//   product: number;
-//   location: number;
-//   customer: number;
-//   time: number;
+// // Define the type for a single record from the API
+// type OrderRecord = {
+//   [key: string]: any; // Keys will be dynamic
 // };
 
-// type Filters = {
-//   time: string;
-//   productLevel: string;
-//   locationLevel: string;
-//   customerLevel: string;
-//   productCategory?: string;
-//   state?: string;
-//   customerType?: string;
-// };
-
-// type Dimensions = {
-//   rows: string;
-//   columns: string;
-//   filters: Filters;
-// };
-
+// // Define the structure for the current view state
 // type CurrentView = {
-//   measure: string;
-//   dimensions: Dimensions;
-//   drillLevel: DrillLevel;
+//   measure: string; // The primary measure selected by user for context (sent as part of 'measure' array in API)
+//   dimensions: {
+//     selectedColumns: string[]; // Columns requested by the user (dimensions + measure)
+//     filters: Record<string, string>; // Filters applied to dimensions
+//   };
 // };
 
-// type ViewData = {
-//   headers: string[];
-//   rows: {
-//     dimension: string;
-//     values: number[];
-//   }[];
+// const API_DOMAIN = "http://localhost:5000";
+// const DATA_API_URL = `${API_DOMAIN}/api`;
+// const SCHEMA_API_URL = `${API_DOMAIN}/api/get_all`;
+// const UNIQUE_VALUES_API_URL = `${API_DOMAIN}/api/get_unique_values`; // New endpoint for unique values
+// const API_LIMIT = 100; // Example limit
+// const API_OFFSET = 0; // Example offset
+
+// // Helper function for Vietnamese display titles
+// const getDisplayTitle = (key: string): string => {
+//   return key;
 // };
 
 
 // export default function OLAPOperations() {
-//   // Mô phỏng dữ liệu kho dữ liệu
-//   const initialData = {
-//     dimensions: {
-//       time: ["Q1-2023", "Q2-2023", "Q3-2023", "Q4-2023"],
-//       location: {
-//         states: ["California", "New York", "Texas", "Florida"],
-//         cities: {
-//           California: ["Los Angeles", "San Francisco", "San Diego"],
-//           "New York": ["New York City", "Buffalo", "Albany"],
-//           Texas: ["Houston", "Dallas", "Austin"],
-//           Florida: ["Miami", "Orlando", "Tampa"],
-//         },
-//       },
-//       product: {
-//         categories: ["Electronics", "Clothing", "Home Goods", "Books"],
-//         items: {
-//           Electronics: ["Laptop", "Smartphone", "Tablet", "Headphones"],
-//           Clothing: ["Shirts", "Pants", "Jackets", "Shoes"],
-//           "Home Goods": ["Furniture", "Kitchenware", "Bedding", "Decor"],
-//           Books: ["Fiction", "Non-fiction", "Educational", "Children's"],
-//         },
-//       },
-//       customer: {
-//         types: ["Tourist", "Mail Order", "Both"],
-//         segments: {
-//           Tourist: ["Group Tour", "Individual", "Business"],
-//           "Mail Order": ["Regular", "Premium", "New"],
-//           Both: ["VIP", "Standard"],
-//         },
-//       },
-//     },
-//     facts: {
-//       // Mô phỏng dữ liệu bán hàng
-//       sales: [
-//         // Cấu trúc: [Thời gian][Bang][Thành phố][Loại sản phẩm][Sản phẩm][Loại khách hàng]
-//         // Q1-2023
-//         [
-//           // California
-//           [
-//             // Los Angeles
-//             [
-//               // Electronics
-//               [
-//                 // Laptop, Smartphone, Tablet, Headphones
-//                 [
-//                   // Tourist, Mail Order, Both
-//                   [120000, 85000, 45000],
-//                   [95000, 110000, 30000],
-//                   [75000, 65000, 25000],
-//                   [45000, 35000, 15000],
-//                 ],
-//                 // Clothing
-//                 [
-//                   [65000, 45000, 25000],
-//                   [55000, 65000, 20000],
-//                   [40000, 35000, 15000],
-//                   [25000, 20000, 10000],
-//                 ],
-//                 // Và các loại sản phẩm khác...
-//               ],
-//             ],
-//             // Và các thành phố khác...
-//           ],
-//           // Và các bang khác...
-//         ],
-//         // Và các quý khác...
-//       ],
-//       inventory: [
-//         // Cấu trúc tương tự như sales
-//       ],
-//       orders: [
-//         // Cấu trúc tương tự như sales
-//       ],
-//     },
-//   }
+//   const [apiData, setApiData] = useState<OrderRecord[]>([]);
+//   const [isLoading, setIsLoading] = useState(true);
+//   const [error, setError] = useState<string | null>(null);
 
-//   // State cho view hiện tại
+//   // Schema-related states (from /api/get_all)
+//   const [identifiedDimensions, setIdentifiedDimensions] = useState<string[]>([]);
+//   const [identifiedMeasures, setIdentifiedMeasures] = useState<string[]>([]);
+//   const [isSchemaLoaded, setIsSchemaLoaded] = useState(false);
+
+//   // State for actual headers from the last valid data response
+//   const [actualResponseHeaders, setActualResponseHeaders] = useState<string[]>([]);
+
 //   const [currentView, setCurrentView] = useState<CurrentView>({
-//     measure: "sales", // sales, inventory, orders
+//     measure: "", // Will be set after schema load
 //     dimensions: {
-//       rows: "product", // product, location, customer, time
-//       columns: "location", // product, location, customer, time
-//       filters: {
-//         time: "Q1-2023",
-//         productLevel: "categories", // categories, items
-//         locationLevel: "states", // states, cities
-//         customerLevel: "types", // types, segments
-//       },
+//       selectedColumns: [], // Will be initialized after schema load
+//       filters: {}, // Will be initialized after schema load
 //     },
-//     drillLevel: {
-//       product: 0, // 0: categories, 1: items
-//       location: 0, // 0: states, 1: cities
-//       customer: 0, // 0: types, 1: segments
-//       time: 0, // 0: quarters, 1: months
-//     },
-//   })
+//   });
 
-//   // Mô phỏng dữ liệu hiển thị
-//   const getViewData = (): ViewData => {
-//     const { rows, columns, filters } = currentView.dimensions;
+//   // State for the Slice operation UI
+//   const [selectedDimensionForFilter, setSelectedDimensionForFilter] = useState<string>("");
+//   const [dimensionFilterValues, setDimensionFilterValues] = useState<Record<string, string[]>>({}); // Cache fetched values
+//   const [isFetchingFilterValues, setIsFetchingFilterValues] = useState(false);
+//   const [filterValueInput, setFilterValueInput] = useState<string>("all"); // Input value for the filter select
 
-//     const getDimensionValues = (dimension: keyof DimensionsData, level: number): string[] => {
-//       switch (dimension) {
-//         case "product":
-//           if (level === 0) {
-//             return initialData.dimensions.product.categories;
-//           } else {
-//             const category = filters.productCategory || "Electronics";
-//             return initialData.dimensions.product.items[category] || [];
-//           }
+//   // Effect to fetch schema (all available dimensions and measures)
+//   useEffect(() => {
+//     const fetchSchema = async () => {
+//       setIsLoading(true); // Start loading for schema
+//       setError(null);
+//       console.log("Fetching schema from:", SCHEMA_API_URL);
 
-//         case "location":
-//           if (level === 0) {
-//             return initialData.dimensions.location.states;
-//           } else {
-//             const state = filters.state || "California";
-//             return initialData.dimensions.location.cities[state] || [];
-//           }
+//       try {
+//         const response = await fetch(SCHEMA_API_URL);
+//         if (!response.ok) {
+//           const errorText = await response.text();
+//           throw new Error(`Schema fetch HTTP error! status: ${response.status} - ${errorText}`);
+//         }
+//         const schemaData = await response.json();
 
-//         case "customer":
-//           if (level === 0) {
-//             return initialData.dimensions.customer.types;
-//           } else {
-//             const type = filters.customerType || "Tourist";
-//             return initialData.dimensions.customer.segments[type] || [];
-//           }
+//         if (schemaData && Array.isArray(schemaData.dimensions) && Array.isArray(schemaData.measures)) {
+//           const dimensions = schemaData.dimensions as string[];
+//           const measures = schemaData.measures as string[];
 
-//         case "time":
-//           return initialData.dimensions.time;
+//           setIdentifiedDimensions(dimensions);
+//           setIdentifiedMeasures(measures);
 
-//         default:
-//           return [];
+//           // Set initial view: first few dimensions + first measure
+//           const initialSelectedColumns = [
+//             ...(dimensions.slice(0, 2)), // First 2 dimensions
+//             ...(measures.length > 0 ? [measures[0]] : []) // First measure
+//           ].filter(Boolean);
+
+//           const initialMeasure = measures.length > 0 ? measures[0] : "";
+
+//           const initialFilters: Record<string, string> = {};
+//           // Set initial filters only if the dimensions exist in the schema
+//           if (dimensions.includes("Quarter")) initialFilters["Quarter"] = "2";
+//           if (dimensions.includes("Year")) initialFilters["Year"] = "2025";
+
+//           setCurrentView({
+//             measure: initialMeasure,
+//             dimensions: {
+//               selectedColumns: initialSelectedColumns.length > 0 ? initialSelectedColumns : (dimensions.length > 0 ? [dimensions[0]] : measures.length > 0 ? [measures[0]] : []), // Ensure at least one column if possible
+//               filters: initialFilters,
+//             },
+//           });
+
+//           // Set initial actualResponseHeaders based on initial selected columns - will be overwritten by first data fetch
+//           setActualResponseHeaders(initialSelectedColumns.length > 0 ? initialSelectedColumns : (dimensions.length > 0 ? [dimensions[0]] : measures.length > 0 ? [measures[0]] : []));
+
+//           setIsSchemaLoaded(true);
+//         } else {
+//           throw new Error("Schema data is not in the expected format (missing 'dimensions' or 'measures' arrays).");
+//         }
+//       } catch (e: any) {
+//         console.error("Schema fetch error:", e);
+//         setError(`Failed to fetch schema: ${e.message}`);
+//         // Keep loading state true if schema failed, indicates critical issue
+//       } finally {
+//         // If schema loaded successfully, data fetch effect will manage loading
+//         if (!isSchemaLoaded) setIsLoading(false); // Stop loading ONLY if schema failed
 //       }
 //     };
+//     fetchSchema();
+//   }, []); // Empty dependency array means this runs only once on mount
 
-//     const rowDimension = getDimensionValues(rows, currentView.drillLevel[rows]);
-//     const columnDimension = getDimensionValues(columns, currentView.drillLevel[columns]);
+//   // Function to send data request to the backend
+//   const sendApiRequest = async (view: CurrentView) => {
+//     // Separate requested columns into dimensions and measures based on schema
+//     const selectedDimensionsApi = view.dimensions.selectedColumns.filter(col => identifiedDimensions.includes(col));
+//     const selectedMeasuresApi = view.dimensions.selectedColumns.filter(col => identifiedMeasures.includes(col));
 
-//     const tableData = rowDimension.map((row) => ({
-//       dimension: row,
-//       values: columnDimension.map(() => Math.floor(Math.random() * 100000) + 10000),
-//     }));
+//     // Ensure the selected measure (for context/title) is also included in the measures list if not already
+//     if (view.measure && identifiedMeasures.includes(view.measure) && !selectedMeasuresApi.includes(view.measure)) {
+//       selectedMeasuresApi.push(view.measure);
+//     }
 
-//     return {
-//       headers: columnDimension,
-//       rows: tableData,
+
+//     // Separate filters into dimension and measure filters based on schema
+//     const dimensionFiltersApi: Record<string, string> = {};
+//     const measureFiltersApi: Record<string, string> = {};
+
+//     Object.entries(view.dimensions.filters).forEach(([key, value]) => {
+//       if (value !== "" && value !== "all" && value !== undefined) {
+//         if (identifiedDimensions.includes(key)) {
+//           dimensionFiltersApi[key] = value;
+//         }
+//         // Although schema suggests measures aren't filtered this way,
+//         // keep the measure filter logic if the backend supports it, but focus on dimensions per requirements.
+//         else if (identifiedMeasures.includes(key)) {
+//           measureFiltersApi[key] = value;
+//         }
+//       }
+//     });
+
+//     // The backend expects 'measure' as a list, so put the selected measure (if any) here
+//     // along with any other measures requested as columns.
+//     // Let's stick to the original request body structure which seems to aggregate measures.
+//     const measuresInRequestBody = view.measure ? [view.measure] : []; // Send the selected measure for aggregation context
+//     // Add any measures that were *explicitly* requested as columns to the measures list if not already there
+
+
+//     // view.dimensions.selectedColumns.filter(col => identifiedMeasures.includes(col)).forEach(m => {
+//     //   if (!measuresInRequestBody.includes(m)) {
+//     //     measuresInRequestBody.push(m);
+//     //   }
+//     // });
+
+
+//     const requestBody = {
+//       dimensions: selectedDimensionsApi, // ONLY dimensions requested as columns
+//       measure: measuresInRequestBody, // Selected measure + any measures requested as columns
+//       limit: API_LIMIT,
+//       offset: API_OFFSET,
+//       measure_filters: measureFiltersApi, // Filters ONLY on measures
+//       dimension_filters: dimensionFiltersApi // Filters ONLY on dimensions
 //     };
+//     console.log("API Data Request Body:", JSON.stringify(requestBody, null, 2));
+
+//     const response = await fetch(DATA_API_URL, {
+//       method: "POST",
+//       headers: { "Content-Type": "application/json" },
+//       body: JSON.stringify(requestBody)
+//     });
+
+//     if (!response.ok) {
+//       const errorText = await response.text();
+//       throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+//     }
+//     return response.json();
 //   };
 
-//   // Các phép toán OLAP
-//   const drillDown = (dimension: keyof DrillLevel) => {
-//     if (currentView.drillLevel[dimension] < 1) {
-//       const newDrillLevel = { ...currentView.drillLevel }
-//       newDrillLevel[dimension] = 1
+//   // Effect to fetch data when view changes or after schema is loaded
+//   useEffect(() => {
+//     if (!isSchemaLoaded) {
+//       return; // Wait for schema
+//     }
 
-//       // Cập nhật filter nếu cần
-//       const newFilters = { ...currentView.dimensions.filters }
-//       if (dimension === "product") {
-//         newFilters.productCategory = initialData.dimensions.product.categories[0]
-//       } else if (dimension === "location") {
-//         newFilters.state = initialData.dimensions.location.states[0]
-//       } else if (dimension === "customer") {
-//         newFilters.customerType = initialData.dimensions.customer.types[0]
+//     const fetchData = async () => {
+//       // Don't set loading true if it's already true from schema fetch initially
+//       if (!isLoading) setIsLoading(true);
+//       setError(null);
+//       console.log("Requesting data with currentView:", currentView);
+
+//       // Determine which columns are expected in the response based on the request
+//       // This helps set actualResponseHeaders even if data is empty
+//       const requestedDimensions = currentView.dimensions.selectedColumns.filter(col => identifiedDimensions.includes(col));
+//       const requestedMeasures = currentView.dimensions.selectedColumns.filter(col => identifiedMeasures.includes(col));
+//       const expectedResponseHeaders = [...requestedDimensions, ...requestedMeasures];
+//       // Ensure the selected measure is also in the expected headers if not already requested as a column
+//       if (currentView.measure && identifiedMeasures.includes(currentView.measure) && !expectedResponseHeaders.includes(currentView.measure)) {
+//         // Add selected measure to expected headers, often measures come *after* dimensions
+//         expectedResponseHeaders.push(currentView.measure);
 //       }
 
-//       setCurrentView({
-//         ...currentView,
-//         drillLevel: newDrillLevel,
+
+//       try {
+//         const data = await sendApiRequest(currentView);
+//         console.log("Data received from API:", data);
+
+//         if (Array.isArray(data)) {
+//           setApiData(data);
+//           if (data.length > 0 && typeof data[0] === 'object' && data[0] !== null) {
+//             const responseKeys = Object.keys(data[0]);
+//             console.log("Actual keys from response:", responseKeys);
+//             setActualResponseHeaders(responseKeys); // Use keys from actual data
+//           } else { // No data rows returned or data is empty array
+//             console.log("No data rows in response, using expected headers.");
+//             setActualResponseHeaders(expectedResponseHeaders); // Use expected headers if no data
+//           }
+//         } else {
+//           console.error("API returned data in unexpected format:", data);
+//           setError("Failed to fetch data: Unexpected format from API.");
+//           setApiData([]);
+//           setActualResponseHeaders(expectedResponseHeaders); // Use expected headers even on error
+//         }
+//       } catch (e: any) {
+//         console.error("Fetch data error:", e);
+//         setError(`Failed to fetch data: ${e.message}`);
+//         setApiData([]);
+//         setActualResponseHeaders(expectedResponseHeaders); // Use expected headers on fetch error
+//       } finally {
+//         setIsLoading(false);
+//       }
+//     };
+
+//     fetchData();
+//     // Re-run when currentView changes OR when schema finishes loading (initial data fetch)
+//   }, [currentView, isSchemaLoaded, identifiedDimensions, identifiedMeasures]); // Added schema dependencies to ensure sendApiRequest uses correct lists
+
+//   // Fetch unique values for a dimension when selected for filtering
+//   const fetchUniqueValues = useCallback(async (dimensionKey: string) => {
+//     if (dimensionFilterValues[dimensionKey]) {
+//       return; // Already cached
+//     }
+//     setIsFetchingFilterValues(true);
+//     setError(null); // Clear previous data errors when fetching filter values
+//     try {
+//       const response = await fetch(`${UNIQUE_VALUES_API_URL}?dimension=${encodeURIComponent(dimensionKey)}`);
+//       if (!response.ok) {
+//         const errorText = await response.text();
+//         throw new Error(`Unique values fetch HTTP error! status: ${response.status} - ${errorText}`);
+//       }
+//       const data = await response.json();
+//       if (Array.isArray(data)) {
+//         setDimensionFilterValues(prev => ({ ...prev, [dimensionKey]: data.map(String) })); // Ensure values are strings
+//       } else {
+//         throw new Error("Unique values API returned data in unexpected format.");
+//       }
+//     } catch (e: any) {
+//       console.error(`Workspace unique values error for ${dimensionKey}:`, e);
+//       // Decide if filter fetch error should block main view or just show message for filter
+//       // setError(`Failed to fetch unique values for ${getDisplayTitle(dimensionKey)}: ${e.message}`); // Potentially disruptive
+//       setDimensionFilterValues(prev => ({ ...prev, [dimensionKey]: [] })); // Store empty array to indicate attempt failed
+//     } finally {
+//       setIsFetchingFilterValues(false);
+//     }
+//   }, [dimensionFilterValues]); // Only re-create if dimensionFilterValues changes unexpectedly
+
+//   // --- OLAP Operations ---
+
+//   // Drill Down: Add a dimension to selected columns
+//   const drillDown = (dimensionKey: string) => {
+//     // Only allow drilling down on identified dimensions that are not already selected
+//     if (identifiedDimensions.includes(dimensionKey) && !currentView.dimensions.selectedColumns.includes(dimensionKey)) {
+//       setCurrentView(prev => ({
+//         ...prev,
 //         dimensions: {
-//           ...currentView.dimensions,
-//           filters: newFilters,
+//           ...prev.dimensions,
+//           selectedColumns: [...prev.dimensions.selectedColumns, dimensionKey]
 //         },
-//       })
+//       }));
 //     }
-//   }
+//   };
 
-//   const rollUp = (dimension: keyof DrillLevel) => {
-//     if (currentView.drillLevel[dimension] > 0) {
-//       const newDrillLevel = { ...currentView.drillLevel }
-//       newDrillLevel[dimension] = 0
+//   // Roll Up: Remove a dimension from selected columns
+//   const rollUp = (dimensionKey: string) => {
+//     // Only allow rolling up identified dimensions that are currently selected
+//     // Prevent removing if it's the last selected column
+//     const currentlySelectedDimensions = currentView.dimensions.selectedColumns.filter(col => identifiedDimensions.includes(col));
+//     const currentlySelectedMeasures = currentView.dimensions.selectedColumns.filter(col => identifiedMeasures.includes(col));
 
-//       setCurrentView({
-//         ...currentView,
-//         drillLevel: newDrillLevel,
-//       })
+//     if (identifiedDimensions.includes(dimensionKey) && currentView.dimensions.selectedColumns.includes(dimensionKey)) {
+//       // Prevent removing the last dimension if there are no measures selected as columns
+//       if (currentlySelectedDimensions.length <= 1 && currentlySelectedMeasures.length === 0) {
+//         console.warn("Cannot roll up: Must keep at least one dimension or a measure selected.");
+//         return; // Don't update state
+//       }
+//       // Also prevent removing the last selected column overall
+//       if (currentView.dimensions.selectedColumns.length <= 1) {
+//         console.warn("Cannot roll up: Must keep at least one column selected overall.");
+//         return; // Don't update state
+//       }
+
+
+//       setCurrentView(prev => ({
+//         ...prev,
+//         dimensions: {
+//           ...prev.dimensions,
+//           selectedColumns: prev.dimensions.selectedColumns.filter(col => col !== dimensionKey)
+//         },
+//       }));
 //     }
-//   }
+//   };
 
-//   const slice = (dimension: keyof Filters, value: string) => {
-//     const newFilters = { ...currentView.dimensions.filters }
-//     newFilters[dimension] = value
-
-//     setCurrentView({
-//       ...currentView,
-//       dimensions: {
-//         ...currentView.dimensions,
-//         filters: newFilters,
-//       },
-//     })
-//   }
-
-//   const pivot = () => {
-//     const { rows, columns } = currentView.dimensions
-
-//     setCurrentView({
-//       ...currentView,
-//       dimensions: {
-//         ...currentView.dimensions,
-//         rows: columns,
-//         columns: rows,
-//       },
-//     })
-//   }
-
-//   const changeMeasure = (measure: string) => {
-//     setCurrentView({
-//       ...currentView,
-//       measure,
-//     })
-//   }
-
-//   // Lấy dữ liệu hiện tại
-//   const viewData = getViewData()
-
-//   // Xác định tiêu đề cho các chiều
-//   const getDimensionTitle = (dimension: string): string => {
-//     switch (dimension) {
-//       case "product":
-//         return "Sản phẩm"
-//       case "location":
-//         return "Địa điểm"
-//       case "customer":
-//         return "Khách hàng"
-//       case "time":
-//         return "Thời gian"
-//       default:
-//         return dimension
+//   // Slice: Add or change a filter for a dimension
+//   const slice = (dimensionKey: string, value: string) => {
+//     // Only allow slicing on identified dimensions
+//     if (identifiedDimensions.includes(dimensionKey)) {
+//       setCurrentView(prev => {
+//         const newFilters = { ...prev.dimensions.filters };
+//         if (value === "all" || value === "" || value === undefined) {
+//           delete newFilters[dimensionKey]; // Remove filter
+//         } else {
+//           newFilters[dimensionKey] = value; // Set or update filter
+//         }
+//         return { ...prev, dimensions: { ...prev.dimensions, filters: newFilters } };
+//       });
 //     }
-//   }
+//   };
 
-//   // Xác định tiêu đề cho các phép đo
-//   const getMeasureTitle = (measure: string): string => {
-//     switch (measure) {
-//       case "sales":
-//         return "Doanh số"
-//       case "inventory":
-//         return "Tồn kho"
-//       case "orders":
-//         return "Đơn hàng"
-//       default:
-//         return measure
+//   // Remove an active filter
+//   const removeFilter = (dimension: string) => {
+//     // Call slice with "all" value to remove the filter
+//     slice(dimension, "all");
+//     // Reset filter value input state if the removed filter was the one currently selected in the UI
+//     if (selectedDimensionForFilter === dimension) {
+//       setFilterValueInput("all");
+//       setSelectedDimensionForFilter(""); // Reset the selected dimension for filter UI
 //     }
+//   };
+
+//   // Change the primary measure (for context/title and implicitly included in measure list for backend)
+//   const changeMeasure = (measureKey: string) => {
+//     // Only allow changing to identified measures
+//     if (identifiedMeasures.includes(measureKey)) {
+//       setCurrentView(prev => {
+//         const newState = { ...prev, measure: measureKey };
+//         // Optional: Automatically add the new measure to selectedColumns if it's not there?
+//         // Requirement 1 says drill/roll only on dimensions. Let's keep measures separate in selectedColumns.
+//         // The sendApiRequest logic already ensures the 'measure' key is sent correctly.
+//         // If the measure *is* in selectedColumns, the table will show it.
+//         // If the measure is *not* in selectedColumns, but IS the primary measure, the table will *not* show it
+//         // unless `actualResponseHeaders` includes it.
+//         // Let's modify `sendApiRequest` to *always* include the `currentView.measure` in the list of measures sent.
+//         return newState;
+//       });
+//     }
+//   };
+
+//   // Pivot operation is not supported
+//   const pivot = () => console.warn("Pivot not supported.");
+
+//   // Determine headers for table rendering
+//   const getEffectiveTableHeaders = (): string[] => {
+//     // Use actualResponseHeaders if available and not empty
+//     if (actualResponseHeaders.length > 0) {
+//       return actualResponseHeaders;
+//     }
+//     // Fallback to the columns requested IF schema is loaded and there was no data/error
+//     // This ensures headers appear even if the API returns [] or an error
+//     if (isSchemaLoaded && !isLoading && !error) {
+//       // Determine which columns were requested and are dimensions/measures
+//       const requestedDimensions = currentView.dimensions.selectedColumns.filter(col => identifiedDimensions.includes(col));
+//       const requestedMeasures = currentView.dimensions.selectedColumns.filter(col => identifiedMeasures.includes(col));
+//       const expectedHeaders = [...requestedDimensions, ...requestedMeasures];
+//       // Add the primary measure if not already requested as a column
+//       if (currentView.measure && identifiedMeasures.includes(currentView.measure) && !expectedHeaders.includes(currentView.measure)) {
+//         expectedHeaders.push(currentView.measure);
+//       }
+//       return expectedHeaders;
+//     }
+//     // Fallback for initial loading state or schema error before any data is fetched
+//     return [];
+//   };
+
+//   const effectiveTableHeaders = getEffectiveTableHeaders();
+
+//   // Memoized lists for UI efficiency and correctness
+//   const availableDimensionsToDrillDown = useMemo(() => {
+//     return identifiedDimensions.filter(dim => !currentView.dimensions.selectedColumns.includes(dim));
+//   }, [identifiedDimensions, currentView.dimensions.selectedColumns]);
+
+//   const selectedDimensionsToRollUp = useMemo(() => {
+//     return identifiedDimensions.filter(dim => currentView.dimensions.selectedColumns.includes(dim));
+//   }, [identifiedDimensions, currentView.dimensions.selectedColumns]);
+
+//   const availableDimensionsForFilter = useMemo(() => {
+//     // Offer all identified dimensions for filtering
+//     return identifiedDimensions;
+//   }, [identifiedDimensions]);
+
+//   const availableMeasures = useMemo(() => {
+//     return identifiedMeasures;
+//   }, [identifiedMeasures]);
+
+
+//   // Handle change in the dimension selection for filtering
+//   const handleDimensionSelectForFilter = (dimensionKey: string) => {
+//     setSelectedDimensionForFilter(dimensionKey);
+//     setFilterValueInput("all"); // Reset value selection
+//     if (dimensionKey && identifiedDimensions.includes(dimensionKey)) {
+//       fetchUniqueValues(dimensionKey);
+//     } else {
+//       // Clear values if no dimension is selected or an invalid one
+//       setDimensionFilterValues(prev => {
+//         const newState = { ...prev };
+//         delete newState[dimensionKey]; // Remove if it somehow got there
+//         return newState;
+//       });
+//     }
+//   };
+
+//   // Handle change in the filter value selection
+//   const handleFilterValueChange = (value: string) => {
+//     setFilterValueInput(value);
+//     // Apply the filter immediately when a value is selected
+//     if (selectedDimensionForFilter) {
+//       slice(selectedDimensionForFilter, value);
+//     }
+//   };
+
+
+//   // --- UI Rendering Logic ---
+
+//   // Initial loading state (waiting for schema)
+//   if (isLoading && !isSchemaLoaded && !error) {
+//     return (
+//       <div className="container mx-auto py-8 text-center">
+//         <Loader2 className="mr-2 h-8 w-8 animate-spin inline-block" /> Đang tải cấu trúc dữ liệu...
+//       </div>
+//     );
 //   }
 
+//   // Schema load error state
+//   if (error && !isSchemaLoaded) {
+//     return (
+//       <div className="container mx-auto py-8 text-center">
+//         <p className="text-red-600">Lỗi tải cấu trúc dữ liệu: {error}</p>
+//         <p className="text-gray-500">Vui lòng kiểm tra API backend ({SCHEMA_API_URL}, {UNIQUE_VALUES_API_URL}, {DATA_API_URL}) và thử lại.</p>
+//       </div>
+//     );
+//   }
+
+//   // Should not happen if schema load finishes without error, but good as a fallback
+//   if (!isSchemaLoaded && !error && !isLoading) {
+//     return (
+//       <div className="container mx-auto py-8 text-center">
+//         <p className="text-orange-600">Không thể tải cấu trúc dữ liệu từ API.</p>
+//       </div>
+//     );
+//   }
+
+//   // Main UI after schema is loaded
 //   return (
 //     <div className="container mx-auto py-8">
-//       <h1 className="text-3xl font-bold mb-6 text-center">Phân tích OLAP cho Hệ thống Đặt hàng</h1>
+//       <h1 className="text-3xl font-bold mb-6 text-center">Phân tích Dữ liệu</h1> {/* Removed suffix as title is dynamic */}
 
+//       {/* OLAP Controls Grid */}
 //       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-//         <Card className="p-4">
-//           <div className="flex flex-col space-y-2">
-//             <h3 className="font-medium flex items-center">
-//               <ChevronDown className="mr-2 h-4 w-4" />
-//               Khoan xuống (Drill Down)
-//             </h3>
-//             <p className="text-sm text-gray-500">Xem chi tiết hơn theo chiều</p>
-//             <div className="grid grid-cols-2 gap-2 mt-2">
-//               <Button
-//                 onClick={() => drillDown("product")}
-//                 disabled={currentView.drillLevel.product > 0}
-//                 variant="outline"
-//                 size="sm"
-//               >
-//                 Sản phẩm
+//         {/* Drill Down */}
+//         <Card className="p-4 flex flex-col">
+//           <div className="flex items-center mb-2">
+//             <ChevronDown className="mr-2 h-4 w-4" />
+//             <h3 className="font-medium">Khoan xuống (Thêm Dimension)</h3>
+//           </div>
+//           <p className="text-sm text-gray-500 mb-3">Thêm Dimension vào bảng</p>
+//           <div className="grid grid-cols-2 gap-2 flex-grow max-h-48 overflow-y-auto pr-2">
+//             {availableDimensionsToDrillDown.length > 0 ? availableDimensionsToDrillDown.map(key => (
+//               <Button key={key} onClick={() => drillDown(key)} variant="outline" size="sm" className="truncate" title={getDisplayTitle(key)}>
+//                 {getDisplayTitle(key)}
 //               </Button>
-//               <Button
-//                 onClick={() => drillDown("location")}
-//                 disabled={currentView.drillLevel.location > 0}
-//                 variant="outline"
-//                 size="sm"
-//               >
-//                 Địa điểm
-//               </Button>
-//               <Button
-//                 onClick={() => drillDown("customer")}
-//                 disabled={currentView.drillLevel.customer > 0}
-//                 variant="outline"
-//                 size="sm"
-//               >
-//                 Khách hàng
-//               </Button>
-//               <Button
-//                 onClick={() => drillDown("time")}
-//                 disabled={currentView.drillLevel.time > 0}
-//                 variant="outline"
-//                 size="sm"
-//               >
-//                 Thời gian
-//               </Button>
-//             </div>
+//             )) : <p className="text-sm text-gray-500 col-span-2">Tất cả Dimensions đã được chọn.</p>}
 //           </div>
 //         </Card>
 
-//         <Card className="p-4">
-//           <div className="flex flex-col space-y-2">
-//             <h3 className="font-medium flex items-center">
-//               <ChevronUp className="mr-2 h-4 w-4" />
-//               Cuộn lên (Roll Up)
-//             </h3>
-//             <p className="text-sm text-gray-500">Tổng hợp dữ liệu lên mức cao hơn</p>
-//             <div className="grid grid-cols-2 gap-2 mt-2">
+//         {/* Roll Up */}
+//         <Card className="p-4 flex flex-col">
+//           <div className="flex items-center mb-2">
+//             <ChevronUp className="mr-2 h-4 w-4" />
+//             <h3 className="font-medium">Cuộn lên (Loại bỏ Dimension)</h3>
+//           </div>
+//           <p className="text-sm text-gray-500 mb-3">Loại bỏ Dimension khỏi bảng</p>
+//           <div className="grid grid-cols-2 gap-2 flex-grow max-h-48 overflow-y-auto pr-2">
+//             {selectedDimensionsToRollUp.length > 0 ? selectedDimensionsToRollUp.map(key => (
 //               <Button
-//                 onClick={() => rollUp("product")}
-//                 disabled={currentView.drillLevel.product === 0}
+//                 key={key}
+//                 onClick={() => rollUp(key)}
 //                 variant="outline"
 //                 size="sm"
+//                 className="truncate"
+//                 title={getDisplayTitle(key)}
+//                 disabled={currentView.dimensions.selectedColumns.length <= 1} // Disable if it's the only column left
 //               >
-//                 Sản phẩm
+//                 {getDisplayTitle(key)}
 //               </Button>
-//               <Button
-//                 onClick={() => rollUp("location")}
-//                 disabled={currentView.drillLevel.location === 0}
-//                 variant="outline"
-//                 size="sm"
-//               >
-//                 Địa điểm
-//               </Button>
-//               <Button
-//                 onClick={() => rollUp("customer")}
-//                 disabled={currentView.drillLevel.customer === 0}
-//                 variant="outline"
-//                 size="sm"
-//               >
-//                 Khách hàng
-//               </Button>
-//               <Button
-//                 onClick={() => rollUp("time")}
-//                 disabled={currentView.drillLevel.time === 0}
-//                 variant="outline"
-//                 size="sm"
-//               >
-//                 Thời gian
-//               </Button>
-//             </div>
+//             )) : <p className="text-sm text-gray-500 col-span-2">Chưa có Dimensions nào được chọn.</p>}
 //           </div>
 //         </Card>
 
-//         <Card className="p-4">
-//           <div className="flex flex-col space-y-2">
-//             <h3 className="font-medium flex items-center">
-//               <Scissors className="mr-2 h-4 w-4" />
-//               Chiếu chọn (Slice and Dice)
-//             </h3>
-//             <p className="text-sm text-gray-500">Lọc và chọn dữ liệu</p>
-//             <div className="flex flex-col space-y-2 mt-2">
-//               <Select value={currentView.dimensions.filters.time} onValueChange={(value) => slice("time", value)}>
-//                 <SelectTrigger className="h-8">
-//                   <SelectValue placeholder="Chọn thời gian" />
-//                 </SelectTrigger>
-//                 <SelectContent>
-//                   {initialData.dimensions.time.map((time) => (
-//                     <SelectItem key={time} value={time}>
-//                       {time}
-//                     </SelectItem>
-//                   ))}
-//                 </SelectContent>
-//               </Select>
-
-//               <Select value={currentView.measure} onValueChange={changeMeasure}>
-//                 <SelectTrigger className="h-8">
-//                   <SelectValue placeholder="Chọn phép đo" />
-//                 </SelectTrigger>
-//                 <SelectContent>
-//                   <SelectItem value="sales">Doanh số</SelectItem>
-//                   <SelectItem value="inventory">Tồn kho</SelectItem>
-//                   <SelectItem value="orders">Đơn hàng</SelectItem>
-//                 </SelectContent>
-//               </Select>
-//             </div>
+//         {/* Slice (Filtering) */}
+//         <Card className="p-4 flex flex-col">
+//           <div className="flex items-center mb-2">
+//             <Scissors className="mr-2 h-4 w-4" />
+//             <h3 className="font-medium">Chiếu chọn (Lọc)</h3>
 //           </div>
-//         </Card>
+//           <p className="text-sm text-gray-500 mb-3">Lọc dữ liệu theo Dimension</p>
+//           <div className="flex flex-col space-y-2 flex-grow max-h-48 overflow-y-auto pr-2">
+//             {/* Dimension Selection for Filtering */}
+//             <Label htmlFor="filter-dimension-select">Chọn Dimension để lọc:</Label>
+//             <Select value={selectedDimensionForFilter} onValueChange={handleDimensionSelectForFilter} name="filter-dimension-select">
+//               <SelectTrigger className="h-8"><SelectValue placeholder="Chọn Dimension" /></SelectTrigger>
+//               <SelectContent>
+//                 {/* Only list dimensions that are NOT already filtered? Or all? Let's list all */}
+//                 {availableDimensionsForFilter.length > 0 ? availableDimensionsForFilter.map(dim => (
+//                   <SelectItem key={`filter-dim-${dim}`} value={dim} className="truncate" title={getDisplayTitle(dim)}>
+//                     {getDisplayTitle(dim)} {currentView.dimensions.filters[dim] ? `(Đã lọc: ${currentView.dimensions.filters[dim]})` : ''}
+//                   </SelectItem>
+//                 )) : <SelectItem value="" disabled>Không có Dimension nào</SelectItem>}
+//               </SelectContent>
+//             </Select>
 
-//         <Card className="p-4">
-//           <div className="flex flex-col space-y-2">
-//             <h3 className="font-medium flex items-center">
-//               <RotateCw className="mr-2 h-4 w-4" />
-//               Xoay (Pivot)
-//             </h3>
-//             <p className="text-sm text-gray-500">Xoay bảng (đổi hàng và cột)</p>
-//             <div className="flex flex-col space-y-2 mt-2">
-//               <div className="flex items-center justify-between">
-//                 <Label>Hàng:</Label>
-//                 <span className="font-medium">{getDimensionTitle(currentView.dimensions.rows)}</span>
+//             {/* Value Selection for Filtering */}
+//             {selectedDimensionForFilter && (
+//               <>
+//                 <Label htmlFor="filter-value-select">Chọn giá trị:</Label>
+//                 <Select value={filterValueInput} onValueChange={handleFilterValueChange} name="filter-value-select" disabled={isFetchingFilterValues}>
+//                   <SelectTrigger className="h-8">
+//                     {isFetchingFilterValues ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+//                     <SelectValue placeholder="Chọn giá trị" />
+//                   </SelectTrigger>
+//                   <SelectContent>
+//                     <SelectItem value="all">Tất cả ({getDisplayTitle(selectedDimensionForFilter)})</SelectItem>
+//                     {/* Render fetched unique values */}
+//                     {dimensionFilterValues[selectedDimensionForFilter]?.length > 0 ? (
+//                       dimensionFilterValues[selectedDimensionForFilter].map(value => (
+//                         <SelectItem key={`filter-value-${value}`} value={value.toString()}>{value}</SelectItem>
+//                       ))
+//                     ) : isFetchingFilterValues ? null : (
+//                       <SelectItem value="no-values" disabled>Không tìm thấy giá trị</SelectItem>
+//                     )}
+//                   </SelectContent>
+//                 </Select>
+//               </>
+//             )}
+//           </div>
+//           {/* Display active filters */}
+//           <div className="mt-4">
+//             <h4 className="text-sm font-medium mb-2">Bộ lọc đang áp dụng:</h4>
+//             {Object.entries(currentView.dimensions.filters).length > 0 ? (
+//               <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto pr-2">
+//                 {Object.entries(currentView.dimensions.filters).map(([key, value]) => (
+//                   <span key={key} className="flex items-center bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full dark:bg-blue-900 dark:text-blue-300">
+//                     {getDisplayTitle(key)}: {value}
+//                     <button onClick={() => removeFilter(key)} className="ml-1 text-blue-800 hover:text-blue-900 dark:text-blue-300 dark:hover:text-blue-400 focus:outline-none">
+//                       <XCircle className="h-3 w-3" />
+//                     </button>
+//                   </span>
+//                 ))}
 //               </div>
-//               <div className="flex items-center justify-between">
-//                 <Label>Cột:</Label>
-//                 <span className="font-medium">{getDimensionTitle(currentView.dimensions.columns)}</span>
-//               </div>
-//               <Button onClick={pivot} variant="outline" className="mt-2">
-//                 Xoay bảng
-//               </Button>
-//             </div>
+//             ) : (
+//               <p className="text-sm text-gray-500">Không có bộ lọc nào.</p>
+//             )}
 //           </div>
 //         </Card>
+
+
+//         {/* Measure Selection */}
+//         <Card className="p-4 flex flex-col">
+//           <div className="flex items-center mb-2">
+//             <RotateCw className="mr-2 h-4 w-4" /> {/* Changed icon, maybe not the best */}
+//             <h3 className="font-medium">Chọn Phép đo chính</h3>
+//           </div>
+//           <p className="text-sm text-gray-500 mb-3">Chọn phép đo để hiển thị</p>
+//           <div className="flex flex-col space-y-2 flex-grow max-h-48 overflow-y-auto pr-2">
+//             {availableMeasures.length > 0 ? (
+//               <>
+//                 <Label htmlFor="select-measure">Phép đo:</Label>
+//                 <Select value={currentView.measure} onValueChange={changeMeasure} name="select-measure">
+//                   <SelectTrigger className="h-8"><SelectValue placeholder="Chọn phép đo" /></SelectTrigger>
+//                   <SelectContent>
+//                     {availableMeasures.map(m => <SelectItem key={m} value={m} className="truncate" title={getDisplayTitle(m)}>{getDisplayTitle(m)}</SelectItem>)}
+//                   </SelectContent>
+//                 </Select>
+//               </>
+//             ) : (
+//               <p className="text-sm text-gray-500">Không có phép đo nào.</p>
+//             )}
+
+//           </div>
+//         </Card>
+
+
+
+
+//         {/* Pivot - Disabled */}
+//         {/* This card remains disabled as pivot is not implemented */}
+//         {/* <Card className="p-4 opacity-50 cursor-not-allowed flex flex-col"> ... </Card> */}
 //       </div>
 
+//       {/* Data Table Display */}
 //       <Card className="p-6">
 //         <h2 className="text-xl font-semibold mb-4">
-//           {getMeasureTitle(currentView.measure)} - {currentView.dimensions.filters.time}
+//           Dữ liệu
+//           {currentView.measure ? `: ${getDisplayTitle(currentView.measure)}` : ""}
+//           {/* Active filters are now displayed within the Slice card */}
 //         </h2>
-
-//         <div className="overflow-x-auto">
-//           <Table>
-//             <TableHeader>
-//               <TableRow>
-//                 <TableHead className="w-[150px]">{getDimensionTitle(currentView.dimensions.rows)}</TableHead>
-//                 {viewData.headers.map((header) => (
-//                   <TableHead key={header} className="text-center">
-//                     {header}
-//                   </TableHead>
-//                 ))}
-//                 <TableHead className="text-center">Tổng</TableHead>
-//               </TableRow>
-//             </TableHeader>
-//             <TableBody>
-//               {viewData.rows.map((row) => (
-//                 <TableRow key={row.dimension}>
-//                   <TableCell className="font-medium">{row.dimension}</TableCell>
-//                   {row.values.map((value, index) => (
-//                     <TableCell key={index} className="text-center">
-//                       {value.toLocaleString()}
-//                     </TableCell>
+//         {isLoading && (
+//           <div className="flex items-center justify-center p-8"><Loader2 className="mr-2 h-6 w-6 animate-spin" />Đang tải dữ liệu...</div>
+//         )}
+//         {/* Show data fetch error ONLY if schema was loaded successfully */}
+//         {error && !isLoading && isSchemaLoaded && (
+//           <div className="p-4 text-red-700 bg-red-100 border border-red-200 rounded">Lỗi tải dữ liệu: {error}</div>
+//         )}
+//         {/* Show "No data" message only if schema is loaded, not currently loading/erroring on data, and apiData is empty */}
+//         {!isLoading && !error && apiData.length === 0 && isSchemaLoaded && (
+//           <div className="p-4 text-gray-700 bg-gray-100 border border-gray-200 rounded">
+//             Không có dữ liệu hiển thị cho yêu cầu hiện tại. (Có thể do bộ lọc hoặc không có dữ liệu từ API).
+//             {effectiveTableHeaders.length > 0 && <p className="text-sm mt-1">Đã yêu cầu/nhận được các cột: {effectiveTableHeaders.map(getDisplayTitle).join(', ')}</p>}
+//           </div>
+//         )}
+//         {/* Render table if not loading, no data error, and there are effective headers AND data */}
+//         {!isLoading && !error && apiData.length > 0 && effectiveTableHeaders.length > 0 && (
+//           <div className="overflow-x-auto">
+//             <Table>
+//               <TableHeader>
+//                 <TableRow>
+//                   {/* Use effectiveTableHeaders derived from the actual response or requested headers */}
+//                   {effectiveTableHeaders.map(hKey => (
+//                     <TableHead key={hKey} className="text-center min-w-[140px] whitespace-nowrap">{getDisplayTitle(hKey)}</TableHead>
 //                   ))}
-//                   <TableCell className="text-center font-medium">
-//                     {row.values.reduce((sum, val) => sum + val, 0).toLocaleString()}
-//                   </TableCell>
 //                 </TableRow>
-//               ))}
-//               <TableRow>
-//                 <TableCell className="font-medium">Tổng</TableCell>
-//                 {viewData.headers.map((_, colIndex) => (
-//                   <TableCell key={colIndex} className="text-center font-medium">
-//                     {viewData.rows.reduce((sum, row) => sum + row.values[colIndex], 0).toLocaleString()}
-//                   </TableCell>
+//               </TableHeader>
+//               <TableBody>
+//                 {apiData.map((row, rIdx) => (
+//                   <TableRow key={`row-${rIdx}`}>
+//                     {/* Render cells based on effectiveTableHeaders */}
+//                     {effectiveTableHeaders.map(hKey => (
+//                       <TableCell key={`${rIdx}-${hKey}`} className={`text-${typeof row[hKey] === 'number' ? 'right' : 'left'} whitespace-nowrap px-2 py-1`}>
+//                         {row.hasOwnProperty(hKey) && row[hKey] !== null && row[hKey] !== undefined
+//                           ? (typeof row[hKey] === 'number' ? row[hKey].toLocaleString() : row[hKey].toString())
+//                           : '(Trống)'}
+//                       </TableCell>
+//                     ))}
+//                   </TableRow>
 //                 ))}
-//                 <TableCell className="text-center font-bold">
-//                   {viewData.rows
-//                     .flatMap((row) => row.values)
-//                     .reduce((sum, val) => sum + val, 0)
-//                     .toLocaleString()}
-//                 </TableCell>
-//               </TableRow>
-//             </TableBody>
-//           </Table>
-//         </div>
+//               </TableBody>
+//             </Table>
+//           </div>
+//         )}
+//         {/* Case where we have headers (e.g. requested ones) but API returned empty data array - handled by the "No data" message now */}
 //       </Card>
 //     </div>
-//   )
+//   );
 // }
 
-"use client"
 
-import { useEffect, useState } from "react"
+
+
+
+import { useEffect, useState, useCallback, useMemo } from "react"
 import { Card } from "./components/ui/card"
 import { Button } from "./components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./components/ui/table"
 import { Label } from "./components/ui/label"
-import { ChevronDown, ChevronUp, RotateCw, Scissors, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, RotateCw, Scissors, Loader2, XCircle } from 'lucide-react'
 
 // Define the type for a single record from the API
 type OrderRecord = {
-  "City Name": string;
-  "Customer ID": string;
-  "Customer Name": string;
-  Day: string;
-  Month: string;
-  "Order ID": string;
-  Quarter: string;
-  State: string;
-  "Total Amount": number;
-  Year: string;
-  // Add other potential keys from the API response if needed
-  [key: string]: any; // Allow for other keys
+  [key: string]: any; // Keys will be dynamic
 };
-
-// Define the available dimensions based on the API keys
-const availableDimensions = [
-  "Order ID",
-  "Customer ID",
-  "Customer Name",
-  "Day",
-  "Month",
-  "Quarter",
-  "Year",
-  "City Name",
-  "State",
-];
-
-// Define the available measures (based on numeric keys)
-const availableMeasures = [
-    "Total Amount",
-    // Add other numeric keys if available from the API
-];
 
 // Define the structure for the current view state
 type CurrentView = {
   measure: string;
   dimensions: {
-    selectedColumns: string[]; // Which keys from the API to show as columns
-    filters: Record<string, string>; // Generic filters { key: value }
+    selectedColumns: string[];
+    filters: Record<string, string>;
   };
 };
 
-// ViewData structure to feed the table component
-type ViewData = {
-  headers: string[];
-  rows: OrderRecord[]; // Rows are just the filtered API records
+const API_DOMAIN = "http://localhost:5000";
+const DATA_API_URL = `${API_DOMAIN}/api`;
+const SCHEMA_API_URL = `${API_DOMAIN}/api/get_all`;
+const UNIQUE_VALUES_API_URL = `${API_DOMAIN}/api/get_unique_values`;
+const API_LIMIT = 10000;
+const API_OFFSET = 0;
+
+// Helper function for Vietnamese display titles
+const getDisplayTitle = (key: string): string => {
+  return key;
 };
 
-
 export default function OLAPOperations() {
-  // State for fetched API data
   const [apiData, setApiData] = useState<OrderRecord[]>([]);
-  // State for loading indicator
   const [isLoading, setIsLoading] = useState(true);
-  // State for errors
   const [error, setError] = useState<string | null>(null);
 
-  // State for the current view/query configuration
+  // Schema-related states (from /api/get_all)
+  const [identifiedDimensions, setIdentifiedDimensions] = useState<string[]>([]);
+  const [identifiedMeasures, setIdentifiedMeasures] = useState<string[]>([]);
+  const [isSchemaLoaded, setIsSchemaLoaded] = useState(false);
+
+  // State for actual headers from the last valid data response
+  const [actualResponseHeaders, setActualResponseHeaders] = useState<string[]>([]);
+
   const [currentView, setCurrentView] = useState<CurrentView>({
-    measure: "Total Amount", // Default measure
+    measure: "",
     dimensions: {
-      selectedColumns: ["Order ID", "Customer Name", "Total Amount"], // Default columns to show
-      filters: {
-        // Default filter (e.g., initial time filter)
-        "Quarter": "2", // Example: Start with Q2 data based on the API example
-        "Year": "2025", // Example: Start with 2025 data based on the API example
-      },
+      selectedColumns: [],
+      filters: {},
     },
   });
 
-  // Base URL for the mock API
-  const API_BASE_URL = "http://localhost:5000/api";
-  const API_LIMIT = 100; // Example limit
-  const API_OFFSET = 0;
+  // State for the Slice operation UI
+  const [selectedDimensionForFilter, setSelectedDimensionForFilter] = useState<string>("");
+  const [dimensionFilterValues, setDimensionFilterValues] = useState<Record<string, string[]>>({});
+  const [isFetchingFilterValues, setIsFetchingFilterValues] = useState(false);
+  const [filterValueInput, setFilterValueInput] = useState<string>("all");
 
-  const buildApiUrl = (view: CurrentView): string => {
-    const baseUrl = API_BASE_URL;
-    const params: string[] = [];
-  
-    // Add limit & offset first
-    params.push(`limit=${API_LIMIT}`);
-    params.push(`offset=${API_OFFSET}`);
-  
-    // Add dimensions
-    view.dimensions.selectedColumns.forEach(dim => {
-      if (availableDimensions.includes(dim) || availableMeasures.includes(dim)) {
-        params.push(`dimensions=${encodeURIComponent(dim)}`);
-      }
-    });
-  
-    // Add filters
-    Object.entries(view.dimensions.filters).forEach(([key, value]) => {
-      if (
-        value !== "" &&
-        value !== "all" &&
-        (availableDimensions.includes(key) || availableMeasures.includes(key))
-      ) {
-        params.push(`filter=${encodeURIComponent(`${key}:${value}`)}`);
-      }
-    });
-  
-    // Join and return full URL
-    // return `${baseUrl}?${params.join("&")}`;
-    return "http://localhost:5000/api?dimensions=Customer%20ID&dimensions=Order%20ID&limit=100&offset=0%20&measure_filters={%22Total%20Amount%22:%20%22%3C%204000%22}%20&dimension_filters={%22Customer%20ID%22:%20%22cu0001%22}"
-  };
+  // New: measure filter states
+  const [measureFilterInput, setMeasureFilterInput] = useState<string>("");
+  const [measureFilterError, setMeasureFilterError] = useState<string | null>(null);
+  const [measureFilters, setMeasureFilters] = useState<Record<string, string>>({});
 
-  // Effect to fetch data whenever the view configuration changes
+  // Effect to fetch schema
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchSchema = async () => {
       setIsLoading(true);
       setError(null);
-      const url = buildApiUrl(currentView);
-      console.log("Fetching data from:", url); // Log the URL for debugging
-
       try {
-        const response = await fetch(url);
+        const response = await fetch(SCHEMA_API_URL);
         if (!response.ok) {
           const errorText = await response.text();
-          throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+          throw new Error(`Schema fetch HTTP error! status: ${response.status} - ${errorText}`);
         }
-        const data = await response.json();
+        const schemaData = await response.json();
 
-        // Assuming the API returns an array of records directly
-        if (Array.isArray(data)) {
-             setApiData(data);
+        if (schemaData && Array.isArray(schemaData.dimensions) && Array.isArray(schemaData.measures)) {
+          const dimensions = schemaData.dimensions as string[];
+          const measures = schemaData.measures as string[];
+
+          setIdentifiedDimensions(dimensions);
+          setIdentifiedMeasures(measures);
+
+          const initialSelectedColumns = [
+            ...(dimensions.slice(0, 2)),
+            ...(measures.length > 0 ? [measures[0]] : [])
+          ].filter(Boolean);
+
+          const initialMeasure = measures.length > 0 ? measures[0] : "";
+
+          const initialFilters: Record<string, string> = {};
+          if (dimensions.includes("Quarter")) initialFilters["Quarter"] = "2";
+          if (dimensions.includes("Year")) initialFilters["Year"] = "2025";
+
+          setCurrentView({
+            measure: initialMeasure,
+            dimensions: {
+              selectedColumns: initialSelectedColumns.length > 0 ? initialSelectedColumns : (dimensions.length > 0 ? [dimensions[0]] : measures.length > 0 ? [measures[0]] : []),
+              filters: initialFilters,
+            },
+          });
+
+          setActualResponseHeaders(initialSelectedColumns.length > 0 ? initialSelectedColumns : (dimensions.length > 0 ? [dimensions[0]] : measures.length > 0 ? [measures[0]] : []));
+
+          setIsSchemaLoaded(true);
         } else {
-             // Handle cases where the API might return data in a different structure
-             console.error("API returned data in unexpected format:", data);
-             setError("Failed to fetch data: Unexpected format");
-             setApiData([]); // Clear data on format error
+          throw new Error("Schema data is not in the expected format (missing 'dimensions' or 'measures' arrays).");
         }
-
       } catch (e: any) {
-        console.error("Fetch error:", e);
+        setError(`Failed to fetch schema: ${e.message}`);
+      } finally {
+        if (!isSchemaLoaded) setIsLoading(false);
+      }
+    };
+    fetchSchema();
+  }, []);
+
+  // Function to send data request to the backend
+  const sendApiRequest = async (view: CurrentView) => {
+    const selectedDimensionsApi = view.dimensions.selectedColumns.filter(col => identifiedDimensions.includes(col));
+    const selectedMeasuresApi = view.dimensions.selectedColumns.filter(col => identifiedMeasures.includes(col));
+
+    if (view.measure && identifiedMeasures.includes(view.measure) && !selectedMeasuresApi.includes(view.measure)) {
+      selectedMeasuresApi.push(view.measure);
+    }
+
+    // Separate filters into dimension and measure filters based on schema
+    const dimensionFiltersApi: Record<string, string> = {};
+    // Use measureFilters state for measure filters
+    const measureFiltersApi: Record<string, string> = { ...measureFilters };
+
+    Object.entries(view.dimensions.filters).forEach(([key, value]) => {
+      if (value !== "" && value !== "all" && value !== undefined) {
+        if (identifiedDimensions.includes(key)) {
+          dimensionFiltersApi[key] = value;
+        }
+      }
+    });
+
+    const measuresInRequestBody = view.measure ? [view.measure] : [];
+
+    const requestBody = {
+      dimensions: selectedDimensionsApi,
+      measure: measuresInRequestBody,
+      limit: API_LIMIT,
+      offset: API_OFFSET,
+      measure_filters: measureFiltersApi,
+      dimension_filters: dimensionFiltersApi
+    };
+
+    const response = await fetch(DATA_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+    }
+    return response.json();
+  };
+
+  // Effect to fetch data when view changes or after schema is loaded
+  useEffect(() => {
+    if (!isSchemaLoaded) {
+      return;
+    }
+
+    const fetchData = async () => {
+      if (!isLoading) setIsLoading(true);
+      setError(null);
+
+      const requestedDimensions = currentView.dimensions.selectedColumns.filter(col => identifiedDimensions.includes(col));
+      const requestedMeasures = currentView.dimensions.selectedColumns.filter(col => identifiedMeasures.includes(col));
+      const expectedResponseHeaders = [...requestedDimensions, ...requestedMeasures];
+      if (currentView.measure && identifiedMeasures.includes(currentView.measure) && !expectedResponseHeaders.includes(currentView.measure)) {
+        expectedResponseHeaders.push(currentView.measure);
+      }
+
+      try {
+        const data = await sendApiRequest(currentView);
+
+        if (Array.isArray(data)) {
+          setApiData(data);
+          if (data.length > 0 && typeof data[0] === 'object' && data[0] !== null) {
+            const responseKeys = Object.keys(data[0]);
+            setActualResponseHeaders(responseKeys);
+          } else {
+            setActualResponseHeaders(expectedResponseHeaders);
+          }
+        } else {
+          setError("Failed to fetch data: Unexpected format from API.");
+          setApiData([]);
+          setActualResponseHeaders(expectedResponseHeaders);
+        }
+      } catch (e: any) {
         setError(`Failed to fetch data: ${e.message}`);
-        setApiData([]); // Clear data on error
+        setApiData([]);
+        setActualResponseHeaders(expectedResponseHeaders);
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchData();
-  }, [currentView]); // Depend on currentView to refetch when it changes
+  }, [currentView, isSchemaLoaded, identifiedDimensions, identifiedMeasures, measureFilters]);
 
-  // Prepare data for the table based on fetched API data and selected columns
-  const getViewData = (): ViewData => {
-    // Headers are the keys currently selected as columns
-    const headers = currentView.dimensions.selectedColumns;
+  // Fetch unique values for a dimension when selected for filtering
+  const fetchUniqueValues = useCallback(async (dimensionKey: string) => {
+    if (dimensionFilterValues[dimensionKey]) {
+      return;
+    }
+    setIsFetchingFilterValues(true);
+    setError(null);
+    try {
+      const response = await fetch(`${UNIQUE_VALUES_API_URL}?dimension=${encodeURIComponent(dimensionKey)}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Unique values fetch HTTP error! status: ${response.status} - ${errorText}`);
+      }
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        setDimensionFilterValues(prev => ({ ...prev, [dimensionKey]: data.map(String) }));
+      } else {
+        throw new Error("Unique values API returned data in unexpected format.");
+      }
+    } catch (e: any) {
+      setDimensionFilterValues(prev => ({ ...prev, [dimensionKey]: [] }));
+    } finally {
+      setIsFetchingFilterValues(false);
+    }
+  }, [dimensionFilterValues]);
 
-    // Rows are the fetched API data records
-    const rows = apiData;
-
-    return { headers, rows };
-  };
-
-  // OLAP operations based on manipulating selected columns and filters
-
-  // "Drill Down" means adding a dimension to the selected columns
-  const drillDown = (dimension: string) => {
-    // Add the dimension if it's not already selected and is available
-    if (!currentView.dimensions.selectedColumns.includes(dimension) && (availableDimensions.includes(dimension) || availableMeasures.includes(dimension))) {
-      setCurrentView(prevView => ({
-        ...prevView,
+  // Drill Down: Add a dimension to selected columns
+  const drillDown = (dimensionKey: string) => {
+    if (identifiedDimensions.includes(dimensionKey) && !currentView.dimensions.selectedColumns.includes(dimensionKey)) {
+      setCurrentView(prev => ({
+        ...prev,
         dimensions: {
-          ...prevView.dimensions,
-          selectedColumns: [...prevView.dimensions.selectedColumns, dimension],
+          ...prev.dimensions,
+          selectedColumns: [...prev.dimensions.selectedColumns, dimensionKey]
         },
       }));
     }
   };
 
-  // "Roll Up" means removing a dimension from the selected columns
-  const rollUp = (dimension: string) => {
-    // Remove the dimension if it is currently selected
-    if (currentView.dimensions.selectedColumns.includes(dimension)) {
-      setCurrentView(prevView => ({
-        ...prevView,
+  // Roll Up: Remove a dimension from selected columns
+  const rollUp = (dimensionKey: string) => {
+    const currentlySelectedDimensions = currentView.dimensions.selectedColumns.filter(col => identifiedDimensions.includes(col));
+    const currentlySelectedMeasures = currentView.dimensions.selectedColumns.filter(col => identifiedMeasures.includes(col));
+
+    if (identifiedDimensions.includes(dimensionKey) && currentView.dimensions.selectedColumns.includes(dimensionKey)) {
+      if (currentlySelectedDimensions.length <= 1 && currentlySelectedMeasures.length === 0) {
+        return;
+      }
+      if (currentView.dimensions.selectedColumns.length <= 1) {
+        return;
+      }
+      setCurrentView(prev => ({
+        ...prev,
         dimensions: {
-          ...prevView.dimensions,
-          selectedColumns: prevView.dimensions.selectedColumns.filter(col => col !== dimension),
+          ...prev.dimensions,
+          selectedColumns: prev.dimensions.selectedColumns.filter(col => col !== dimensionKey)
         },
       }));
     }
   };
 
-  // "Slice" means adding/changing a filter
-  const slice = (dimension: string, value: string) => {
-     // Only allow slicing on available dimensions
-    if (availableDimensions.includes(dimension) || availableMeasures.includes(dimension)) {
-        setCurrentView(prevView => ({
-            ...prevView,
-            dimensions: {
-                ...prevView.dimensions,
-                filters: {
-                    ...prevView.dimensions.filters,
-                    [dimension]: value,
-                },
-            },
-        }));
+  // Slice: Add or change a filter for a dimension
+  const slice = (dimensionKey: string, value: string) => {
+    if (identifiedDimensions.includes(dimensionKey)) {
+      setCurrentView(prev => {
+        const newFilters = { ...prev.dimensions.filters };
+        if (value === "all" || value === "" || value === undefined) {
+          delete newFilters[dimensionKey];
+        } else {
+          newFilters[dimensionKey] = value;
+        }
+        return { ...prev, dimensions: { ...prev.dimensions, filters: newFilters } };
+      });
     }
   };
 
-    // Remove a specific filter
-    const removeFilter = (dimension: string) => {
-        setCurrentView(prevView => {
-            const newFilters = { ...prevView.dimensions.filters };
-            delete newFilters[dimension];
-            return {
-                ...prevView,
-                dimensions: {
-                    ...prevView.dimensions,
-                    filters: newFilters,
-                },
-            };
-        });
-    };
-
-
-  // "Pivot" - In the context of a flat API, traditional pivot (swapping row/column headers in an aggregate table) isn't directly applicable.
-  // We will disable this button as it doesn't fit the new data model and API interaction.
-  const pivot = () => {
-    console.warn("Pivot operation is not directly supported with a flat API response structure.");
-    // If a new interpretation of pivot is needed (e.g., selecting a 'row' dimension),
-    // this function would need to be re-implemented accordingly, likely requiring
-    // client-side aggregation or a different API endpoint.
-  };
-
-  // Change Measure - The API structure currently only shows "Total Amount" as a measure.
-  // This function is kept but the UI only offers the available measures.
-  const changeMeasure = (measure: string) => {
-    if (availableMeasures.includes(measure)) {
-        setCurrentView(prevView => ({
-            ...prevView,
-            measure,
-        }));
+  // Remove an active filter
+  const removeFilter = (dimension: string) => {
+    slice(dimension, "all");
+    if (selectedDimensionForFilter === dimension) {
+      setFilterValueInput("all");
+      setSelectedDimensionForFilter("");
     }
   };
 
-   // Determine dimensions not currently selected as columns
-   const dimensionsNotSelected = availableDimensions.filter(dim => !currentView.dimensions.selectedColumns.includes(dim));
-   const measuresNotSelected = availableMeasures.filter(measure => !currentView.dimensions.selectedColumns.includes(measure));
-   const allNotSelected = [...dimensionsNotSelected, ...measuresNotSelected];
+  // Change the primary measure (for context/title and implicitly included in measure list for backend)
+  const changeMeasure = (measureKey: string) => {
+    if (identifiedMeasures.includes(measureKey)) {
+      setCurrentView(prev => {
+        const newState = { ...prev, measure: measureKey };
+        return newState;
+      });
+    }
+  };
 
+  // Pivot operation is not supported
+  const pivot = () => console.warn("Pivot not supported.");
 
-   // Determine dimensions currently selected as columns (can be rolled up)
-   const dimensionsSelected = availableDimensions.filter(dim => currentView.dimensions.selectedColumns.includes(dim));
-   const measuresSelected = availableMeasures.filter(measure => currentView.dimensions.selectedColumns.includes(measure));
-    const allSelected = [...dimensionsSelected, ...measuresSelected];
+  // Determine headers for table rendering
+  const getEffectiveTableHeaders = (): string[] => {
+    if (actualResponseHeaders.length > 0) {
+      return actualResponseHeaders;
+    }
+    if (isSchemaLoaded && !isLoading && !error) {
+      const requestedDimensions = currentView.dimensions.selectedColumns.filter(col => identifiedDimensions.includes(col));
+      const requestedMeasures = currentView.dimensions.selectedColumns.filter(col => identifiedMeasures.includes(col));
+      const expectedHeaders = [...requestedDimensions, ...requestedMeasures];
+      if (currentView.measure && identifiedMeasures.includes(currentView.measure) && !expectedHeaders.includes(currentView.measure)) {
+        expectedHeaders.push(currentView.measure);
+      }
+      return expectedHeaders;
+    }
+    return [];
+  };
 
+  const effectiveTableHeaders = getEffectiveTableHeaders();
 
-  // Prepare data for the table
-  const viewData = getViewData();
+  // Memoized lists for UI efficiency and correctness
+  const availableDimensionsToDrillDown = useMemo(() => {
+    return identifiedDimensions.filter(dim => !currentView.dimensions.selectedColumns.includes(dim));
+  }, [identifiedDimensions, currentView.dimensions.selectedColumns]);
 
-  // Xác định tiêu đề cho các chiều/phép đo (could be simplified to just return the key name if they are descriptive)
-  const getDisplayTitle = (key: string): string => {
-    switch (key) {
-        case "Order ID": return "Mã Đơn hàng";
-        case "Customer ID": return "Mã Khách hàng";
-        case "Customer Name": return "Tên Khách hàng";
-        case "Day": return "Ngày";
-        case "Month": return "Tháng";
-        case "Quarter": return "Quý";
-        case "Year": return "Năm";
-        case "City Name": return "Thành phố";
-        case "State": return "Bang";
-        case "Total Amount": return "Tổng tiền";
-      default:
-        return key; // Fallback to the key itself
-    }
-  };
+  const selectedDimensionsToRollUp = useMemo(() => {
+    return identifiedDimensions.filter(dim => currentView.dimensions.selectedColumns.includes(dim));
+  }, [identifiedDimensions, currentView.dimensions.selectedColumns]);
+
+  const availableDimensionsForFilter = useMemo(() => {
+    return identifiedDimensions;
+  }, [identifiedDimensions]);
+
+  const availableMeasures = useMemo(() => {
+    return identifiedMeasures;
+  }, [identifiedMeasures]);
+
+  // Handle change in the dimension selection for filtering
+  const handleDimensionSelectForFilter = (dimensionKey: string) => {
+    setSelectedDimensionForFilter(dimensionKey);
+    setFilterValueInput("all");
+    if (dimensionKey && identifiedDimensions.includes(dimensionKey)) {
+      fetchUniqueValues(dimensionKey);
+    } else {
+      setDimensionFilterValues(prev => {
+        const newState = { ...prev };
+        delete newState[dimensionKey];
+        return newState;
+      });
+    }
+  };
+
+  // Handle change in the filter value selection
+  const handleFilterValueChange = (value: string) => {
+    setFilterValueInput(value);
+    if (selectedDimensionForFilter) {
+      slice(selectedDimensionForFilter, value);
+    }
+  };
+
+  // --- New: Apply measure filter handler ---
+  const applyMeasureFilter = () => {
+    setMeasureFilterError(null);
+    const trimmed = measureFilterInput.trim();
+    if (!currentView.measure) {
+      setMeasureFilterError("Vui lòng chọn phép đo trước khi lọc.");
+      return;
+    }
+    if (!trimmed) {
+      setMeasureFilterError("Điền điều kiện lọc (ví dụ: >100, =200, <300).");
+      return;
+    }
+    // Accept simple operators: =, >, <, >=, <=, !=
+    const regex = /^([<>=!]=?|=)\s*([\d.]+)$/;
+    const match = trimmed.match(regex);
+    if (!match) {
+      setMeasureFilterError("Định dạng điều kiện không hợp lệ. Ví dụ hợp lệ: >100, <= 200, =150");
+      return;
+    }
+    setMeasureFilters(prev => ({
+      ...prev,
+      [currentView.measure]: trimmed,
+    }));
+  };
+
+  // Remove measure filter utility
+  const removeMeasureFilter = (measure: string) => {
+    setMeasureFilters(prev => {
+      const newState = { ...prev };
+      delete newState[measure];
+      return newState;
+    });
+    if (currentView.measure === measure) {
+      setMeasureFilterInput("");
+      setMeasureFilterError(null);
+    }
+  };
+
+  // --- UI Rendering Logic ---
+
+  if (isLoading && !isSchemaLoaded && !error) {
+    return (
+      <div className="container mx-auto py-8 text-center">
+        <Loader2 className="mr-2 h-8 w-8 animate-spin inline-block" /> Đang tải cấu trúc dữ liệu...
+      </div>
+    );
+  }
+
+  if (error && !isSchemaLoaded) {
+    return (
+      <div className="container mx-auto py-8 text-center">
+        <p className="text-red-600">Lỗi tải cấu trúc dữ liệu: {error}</p>
+        <p className="text-gray-500">Vui lòng kiểm tra API backend ({SCHEMA_API_URL}, {UNIQUE_VALUES_API_URL}, {DATA_API_URL}) và thử lại.</p>
+      </div>
+    );
+  }
+
+  if (!isSchemaLoaded && !error && !isLoading) {
+    return (
+      <div className="container mx-auto py-8 text-center">
+        <p className="text-orange-600">Không thể tải cấu trúc dữ liệu từ API.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto py-8">
-      <h1 className="text-3xl font-bold mb-6 text-center">Phân tích Dữ liệu từ API</h1>
-
+      <h1 className="text-3xl font-bold mb-6 text-center">Phân tích Dữ liệu</h1>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {/* Drill Down (Add Column) */}
-        <Card className="p-4">
-          <div className="flex flex-col space-y-2">
-            <h3 className="font-medium flex items-center">
-              <ChevronDown className="mr-2 h-4 w-4" />
-              Khoan xuống (Thêm cột)
-            </h3>
-            <p className="text-sm text-gray-500">Thêm cột/chiều vào bảng</p>
-            <div className="grid grid-cols-2 gap-2 mt-2">
-              {allNotSelected.length > 0 ? (
-                  allNotSelected.map(dim => (
-                    <Button
-                        key={dim}
-                        onClick={() => drillDown(dim)}
-                        variant="outline"
-                        size="sm"
-                    >
-                       {getDisplayTitle(dim)}
-                    </Button>
-                  ))
-              ) : (
-                  <p className="text-sm text-gray-500 col-span-2">Không có chiều nào khả dụng để thêm.</p>
-              )}
-            </div>
+        {/* Drill Down */}
+        <Card className="p-4 flex flex-col">
+          <div className="flex items-center mb-2">
+            <ChevronDown className="mr-2 h-4 w-4" />
+            <h3 className="font-medium">Khoan xuống (Thêm Dimension)</h3>
+          </div>
+          <p className="text-sm text-gray-500 mb-3">Thêm Dimension vào bảng</p>
+          <div className="grid grid-cols-2 gap-2 flex-grow max-h-48 overflow-y-auto pr-2">
+            {availableDimensionsToDrillDown.length > 0 ? availableDimensionsToDrillDown.map(key => (
+              <Button key={key} onClick={() => drillDown(key)} variant="outline" size="sm" className="truncate" title={getDisplayTitle(key)}>
+                {getDisplayTitle(key)}
+              </Button>
+            )) : <p className="text-sm text-gray-500 col-span-2">Tất cả Dimensions đã được chọn.</p>}
           </div>
         </Card>
 
-        {/* Roll Up (Remove Column) */}
-        <Card className="p-4">
-          <div className="flex flex-col space-y-2">
-            <h3 className="font-medium flex items-center">
-              <ChevronUp className="mr-2 h-4 w-4" />
-              Cuộn lên (Bỏ cột)
-            </h3>
-            <p className="text-sm text-gray-500">Loại bỏ cột/chiều khỏi bảng</p>
-            <div className="grid grid-cols-2 gap-2 mt-2">
-             {allSelected.length > 0 ? (
-                 allSelected.map(dim => (
-                    <Button
-                         key={dim}
-                         onClick={() => rollUp(dim)}
-                         variant="outline"
-                         size="sm"
-                         disabled={currentView.dimensions.selectedColumns.length <= 1} // Don't remove the last column
-                     >
-                        {getDisplayTitle(dim)}
-                     </Button>
-                 ))
-             ) : (
-                 <p className="text-sm text-gray-500 col-span-2">Không có cột nào để loại bỏ.</p>
-             )}
-            </div>
+        {/* Roll Up */}
+        <Card className="p-4 flex flex-col">
+          <div className="flex items-center mb-2">
+            <ChevronUp className="mr-2 h-4 w-4" />
+            <h3 className="font-medium">Cuộn lên (Loại bỏ Dimension)</h3>
+          </div>
+          <p className="text-sm text-gray-500 mb-3">Loại bỏ Dimension khỏi bảng</p>
+          <div className="grid grid-cols-2 gap-2 flex-grow max-h-48 overflow-y-auto pr-2">
+            {selectedDimensionsToRollUp.length > 0 ? selectedDimensionsToRollUp.map(key => (
+              <Button
+                key={key}
+                onClick={() => rollUp(key)}
+                variant="outline"
+                size="sm"
+                className="truncate"
+                title={getDisplayTitle(key)}
+                disabled={currentView.dimensions.selectedColumns.length <= 1}
+              >
+                {getDisplayTitle(key)}
+              </Button>
+            )) : <p className="text-sm text-gray-500 col-span-2">Chưa có Dimensions nào được chọn.</p>}
           </div>
         </Card>
 
         {/* Slice (Filtering) */}
-        <Card className="p-4">
-          <div className="flex flex-col space-y-2">
-            <h3 className="font-medium flex items-center">
-              <Scissors className="mr-2 h-4 w-4" />
-              Chiếu chọn (Lọc)
-            </h3>
-            <p className="text-sm text-gray-500">Lọc dữ liệu theo chiều</p>
-            <div className="flex flex-col space-y-2 mt-2">
-               {/* Example: Filter by Quarter */}
-              <Label htmlFor="filter-quarter">Quý:</Label>
-               <Select
-                   value={currentView.dimensions.filters["Quarter"] || ""}
-                   onValueChange={(value) => slice("Quarter", value)}
-                   name="filter-quarter"
-               >
-                 <SelectTrigger className="h-8">
-                   <SelectValue placeholder="Chọn quý" />
-                 </SelectTrigger>
-                 <SelectContent>
-                   <SelectItem value="all">Tất cả Quý</SelectItem> {/* Option to remove filter */}
-                   {/* Assuming quarters Q1-Q4 */}
-                   {["1", "2", "3", "4"].map(q => (
-                       <SelectItem key={`Q${q}`} value={q}>
-                           {`Quý ${q}`}
-                       </SelectItem>
-                   ))}
-                 </SelectContent>
-               </Select>
+        <Card className="p-4 flex flex-col">
+          <div className="flex items-center mb-2">
+            <Scissors className="mr-2 h-4 w-4" />
+            <h3 className="font-medium">Chiếu chọn (Lọc)</h3>
+          </div>
+          <p className="text-sm text-gray-500 mb-3">Lọc dữ liệu theo Dimension</p>
+          <div className="flex flex-col space-y-2 flex-grow max-h-48 overflow-y-auto pr-2">
+            <Label htmlFor="filter-dimension-select">Chọn Dimension để lọc:</Label>
+            <Select value={selectedDimensionForFilter} onValueChange={handleDimensionSelectForFilter} name="filter-dimension-select">
+              <SelectTrigger className="h-8"><SelectValue placeholder="Chọn Dimension" /></SelectTrigger>
+              <SelectContent>
+                {availableDimensionsForFilter.length > 0 ? availableDimensionsForFilter.map(dim => (
+                  <SelectItem key={`filter-dim-${dim}`} value={dim} className="truncate" title={getDisplayTitle(dim)}>
+                    {getDisplayTitle(dim)} {currentView.dimensions.filters[dim] ? `(Đã lọc: ${currentView.dimensions.filters[dim]})` : ''}
+                  </SelectItem>
+                )) : <SelectItem value="" disabled>Không có Dimension nào</SelectItem>}
+              </SelectContent>
+            </Select>
 
-                {/* Example: Filter by Year */}
-                <Label htmlFor="filter-year">Năm:</Label>
-                <Select
-                    value={currentView.dimensions.filters["Year"] || ""}
-                    onValueChange={(value) => slice("Year", value)}
-                    name="filter-year"
-                >
-                    <SelectTrigger className="h-8">
-                        <SelectValue placeholder="Chọn năm" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">Tất cả Năm</SelectItem> {/* Option to remove filter */}
-                         {/* Assuming years 2023-2025 */}
-                        {["2023", "2024", "2025"].map(year => (
-                            <SelectItem key={year} value={year}>
-                                {year}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
+            {selectedDimensionForFilter && (
+              <>
+                <Label htmlFor="filter-value-select">Chọn giá trị:</Label>
+                <Select value={filterValueInput} onValueChange={handleFilterValueChange} name="filter-value-select" disabled={isFetchingFilterValues}>
+                  <SelectTrigger className="h-8">
+                    {isFetchingFilterValues ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    <SelectValue placeholder="Chọn giá trị" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tất cả ({getDisplayTitle(selectedDimensionForFilter)})</SelectItem>
+                    {dimensionFilterValues[selectedDimensionForFilter]?.length > 0 ? (
+                      dimensionFilterValues[selectedDimensionForFilter].map(value => (
+                        <SelectItem key={`filter-value-${value}`} value={value.toString()}>{value}</SelectItem>
+                      ))
+                    ) : isFetchingFilterValues ? null : (
+                      <SelectItem value="no-values" disabled>Không tìm thấy giá trị</SelectItem>
+                    )}
+                  </SelectContent>
                 </Select>
-
-
-              {/* Measure Selection (Slice on Measure is less common, but changing measure is like slicing the cube) */}
-              <Label htmlFor="select-measure">Phép đo:</Label>
-              <Select value={currentView.measure} onValueChange={changeMeasure} name="select-measure">
-                <SelectTrigger className="h-8">
-                  <SelectValue placeholder="Chọn phép đo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableMeasures.map(measure => (
-                      <SelectItem key={measure} value={measure}>{getDisplayTitle(measure)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+              </>
+            )}
+          </div>
+          <div className="mt-4">
+            <h4 className="text-sm font-medium mb-2">Bộ lọc đang áp dụng:</h4>
+            {Object.entries(currentView.dimensions.filters).length > 0 ? (
+              <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto pr-2">
+                {Object.entries(currentView.dimensions.filters).map(([key, value]) => (
+                  <span key={key} className="flex items-center bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full dark:bg-blue-900 dark:text-blue-300">
+                    {getDisplayTitle(key)}: {value}
+                    <button onClick={() => removeFilter(key)} className="ml-1 text-blue-800 hover:text-blue-900 dark:text-blue-300 dark:hover:text-blue-400 focus:outline-none">
+                      <XCircle className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">Không có bộ lọc nào.</p>
+            )}
           </div>
         </Card>
 
-        {/* Pivot - Disabled/Removed as it doesn't apply to flat data display */}
-        <Card className="p-4 opacity-50 cursor-not-allowed">
-          <div className="flex flex-col space-y-2">
-            <h3 className="font-medium flex items-center">
-              <RotateCw className="mr-2 h-4 w-4" />
-              Xoay (Pivot)
-            </h3>
-            <p className="text-sm text-gray-500">Không khả dụng với dữ liệu phẳng từ API</p>
-             {/* Display current "Row" (implicit) and "Columns" */}
-             <div className="flex flex-col space-y-2 mt-2">
-               <div className="flex items-center justify-between">
-                 <Label>Cột hiển thị:</Label>
-               </div>
-               <ul className="text-sm text-gray-700 list-disc list-inside">
-                   {currentView.dimensions.selectedColumns.map(col => (
-                       <li key={col}>{getDisplayTitle(col)}</li>
-                   ))}
-               </ul>
-             </div>
-             <Button onClick={pivot} variant="outline" className="mt-2" disabled>
-                Xoay bảng
-             </Button>
+        {/* Measure Selection */}
+        <Card className="p-4 flex flex-col">
+          <div className="flex items-center mb-2">
+            <RotateCw className="mr-2 h-4 w-4" />
+            <h3 className="font-medium">Chọn Phép đo chính</h3>
+          </div>
+          <p className="text-sm text-gray-500 mb-3">Chọn phép đo để hiển thị</p>
+          <div className="flex flex-col space-y-2 flex-grow max-h-48 overflow-y-auto pr-2">
+            {availableMeasures.length > 0 ? (
+              <>
+                <Label htmlFor="select-measure">Phép đo:</Label>
+                <Select value={currentView.measure} onValueChange={changeMeasure} name="select-measure">
+                  <SelectTrigger className="h-8"><SelectValue placeholder="Chọn phép đo" /></SelectTrigger>
+                  <SelectContent>
+                    {availableMeasures.map(m => <SelectItem key={m} value={m} className="truncate" title={getDisplayTitle(m)}>{getDisplayTitle(m)}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+
+                {/* --- New: Measure filter input --- */}
+                {currentView.measure && (
+                  <div className="flex flex-col gap-1 mt-2">
+                    <Label htmlFor="measure-filter-input">Điều kiện cho phép đo ({getDisplayTitle(currentView.measure)}):</Label>
+                    <div className="flex flex-row gap-2 items-center">
+                      <input
+                        id="measure-filter-input"
+                        type="text"
+                        value={measureFilterInput}
+                        onChange={e => setMeasureFilterInput(e.target.value)}
+                        placeholder="VD: >100, =200"
+                        className="border rounded px-2 py-1 flex-grow"
+                        style={{ minWidth: 80 }}
+                      />
+                      <Button type="button" size="sm" onClick={applyMeasureFilter}>Áp dụng</Button>
+                    </div>
+                    {measureFilterError && <span className="text-xs text-red-500">{measureFilterError}</span>}
+                  </div>
+                )}
+
+                {/* --- Display active measure filter --- */}
+                {currentView.measure && measureFilters[currentView.measure] && (
+                  <div className="flex items-center mt-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                    Bộ lọc: {getDisplayTitle(currentView.measure)} {measureFilters[currentView.measure]}
+                    <button
+                      onClick={() => removeMeasureFilter(currentView.measure)}
+                      className="ml-2 text-blue-900 hover:text-red-600 focus:outline-none"
+                      title="Xóa điều kiện"
+                    >
+                      <XCircle className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-gray-500">Không có phép đo nào.</p>
+            )}
           </div>
         </Card>
       </div>
 
+      {/* Data Table Display */}
       <Card className="p-6">
-         <h2 className="text-xl font-semibold mb-4">
-           Dữ liệu: {getDisplayTitle(currentView.measure)}
-            {Object.entries(currentView.dimensions.filters).map(([key, value]) =>
-                <span key={key} className="ml-4 text-base font-normal text-gray-600">
-                    {getDisplayTitle(key)}: {value}
-                    {/* Optional: Add a way to remove filters */}
-                    {/* <button onClick={() => removeFilter(key)} className="ml-1 text-red-500">&times;</button> */}
-                </span>
-            )}
-         </h2>
-
+        <h2 className="text-xl font-semibold mb-4">
+          Dữ liệu
+          {currentView.measure ? `: ${getDisplayTitle(currentView.measure)}` : ""}
+        </h2>
         {isLoading && (
-            <div className="flex items-center justify-center p-8">
-                <Loader2 className="mr-2 h-6 w-6 animate-spin" /> Đang tải dữ liệu...
-            </div>
+          <div className="flex items-center justify-center p-8"><Loader2 className="mr-2 h-6 w-6 animate-spin" />Đang tải dữ liệu...</div>
         )}
-
-        {error && (
-            <div className="p-4 text-red-700 bg-red-100 border border-red-200 rounded">
-                Lỗi: {error}
-            </div>
+        {error && !isLoading && isSchemaLoaded && (
+          <div className="p-4 text-red-700 bg-red-100 border border-red-200 rounded">Lỗi tải dữ liệu: {error}</div>
         )}
-
-        {!isLoading && !error && viewData.rows.length === 0 && (
-             <div className="p-4 text-gray-700 bg-gray-100 border border-gray-200 rounded">
-                Không tìm thấy dữ liệu nào khớp với bộ lọc hiện tại.
-             </div>
+        {!isLoading && !error && apiData.length === 0 && isSchemaLoaded && (
+          <div className="p-4 text-gray-700 bg-gray-100 border border-gray-200 rounded">
+            Không có dữ liệu hiển thị cho yêu cầu hiện tại. (Có thể do bộ lọc hoặc không có dữ liệu từ API).
+            {effectiveTableHeaders.length > 0 && <p className="text-sm mt-1">Đã yêu cầu/nhận được các cột: {effectiveTableHeaders.map(getDisplayTitle).join(', ')}</p>}
+          </div>
         )}
-
-        {!isLoading && !error && viewData.rows.length > 0 && (
+        {!isLoading && !error && apiData.length > 0 && effectiveTableHeaders.length > 0 && (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                   {/* Render headers based on selectedColumns */}
-                  {viewData.headers.map((headerKey) => (
-                    <TableHead key={headerKey} className="text-center min-w-[120px]">
-                      {getDisplayTitle(headerKey)}
-                    </TableHead>
+                  {effectiveTableHeaders.map(hKey => (
+                    <TableHead key={hKey} className="text-center min-w-[140px] whitespace-nowrap">{getDisplayTitle(hKey)}</TableHead>
                   ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                 {/* Render rows based on apiData */}
-                {viewData.rows.map((row, rowIndex) => (
-                  <TableRow key={`row-${rowIndex}`}> {/* Use row index or unique ID from data if available */}
-                    {viewData.headers.map((headerKey, colIndex) => (
-                       <TableCell key={`${rowIndex}-${headerKey}`} className={`text-${typeof row[headerKey] === 'number' ? 'center' : 'left'}`}>
-                          {/* Format number values */}
-                         {typeof row[headerKey] === 'number'
-                            ? row[headerKey].toLocaleString()
-                            : row[headerKey]?.toString() // Handle null/undefined
-                          }
-                       </TableCell>
+                {apiData.map((row, rIdx) => (
+                  <TableRow key={`row-${rIdx}`}>
+                    {effectiveTableHeaders.map(hKey => (
+                      <TableCell key={`${rIdx}-${hKey}`} className={`text-${typeof row[hKey] === 'number' ? 'right' : 'left'} whitespace-nowrap px-2 py-1`}>
+                        {row.hasOwnProperty(hKey) && row[hKey] !== null && row[hKey] !== undefined
+                          ? (typeof row[hKey] === 'number' ? row[hKey].toLocaleString() : row[hKey].toString())
+                          : '(Trống)'}
+                      </TableCell>
                     ))}
                   </TableRow>
                 ))}
-                {/* Removed aggregate total row/column as it doesn't apply to flat data display */}
               </TableBody>
             </Table>
           </div>
         )}
       </Card>
     </div>
-  )
+  );
 }

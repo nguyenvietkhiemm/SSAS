@@ -52,6 +52,8 @@ def build_key_map():
 
     return key_map
 
+# ! hãy chắc chắn trước khi bật cái lưu key_map, vì key_map.json tôi đã tinh chỉnh để tránh lỗi nhất có thể rồi
+
 # key_map = build_key_map()
 
 # with open('./key_map.json', 'w', encoding='utf-8') as f:

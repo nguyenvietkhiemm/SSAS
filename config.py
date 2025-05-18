@@ -23,7 +23,7 @@ def generate_mdx(dimensions=["Customer ID", "Customer Name", "City Name", "Order
                  dimension_filters={"Quarter": "3"},
                  offset=0,
                  limit=100,
-                 cube="Cube"):
+                 cube="Warehouse"):
 
     mdx_template = """
 SELECT
@@ -40,35 +40,45 @@ SUBSET(
   {offset}, {limit}
 )
 DIMENSION PROPERTIES MEMBER_CAPTION, MEMBER_UNIQUE_NAME ON ROWS
-FROM (SELECT ({{ {dimension_filters} }}) ON COLUMNS FROM [{cube}])
+FROM (SELECT ( {dimension_filters} ) ON COLUMNS FROM [{cube}])
 """
 
     keys = [k for k, v in key_map.items() if v in dimensions]
     crossjoin_sets = "*\n".join(f"{key}.ALLMEMBERS" for key in keys)
 
+    measure_keys = []
     for k, v in key_map.items():
         if v in measure:
-            measure = k
-            break
+            measure_keys.append(k)
+    measure = ", ".join(measure_keys)
 
     # có bug đó
     measure_filter = "NOT ISEMPTY({a}) AND {a}".format(a = "[Measures].[Total Amount]") # DEFAULT
     for k, v in key_map.items():
         if v in measure_filters.keys():
+            print("========", v, measure_filters[v], k)
             measure_filter = "NOT ISEMPTY({a}) AND {a}".format(a = k) + measure_filters[v]
-        else:
-            measure_filter = "NOT ISEMPTY({a}) AND {a}".format(a = k)
 
     # có bug đó
     dimension_filter = "[Fact Order].[Customer ID]" # DEFAULT
-    for k, v in key_map.items():
-        if v in dimension_filters.keys():
-            if dimension_filters[v]:
-                dimension_filter = ".".join(k.split(".")) + "." + "&[{}]&[2024]".format(dimension_filters[v])
-                # dimension_filter = k.split(".")[0] + "." + k.split(".")[2] + "." + "&[{}]&[2024]".format(dimension_filters[v])
-            else:
-                dimension_filter = ".".join(k.split("."))
-                # dimension_filter = k.split(".")[0] + "." + k.split(".")[2]
+    li = []
+    filter_keys_to_process = list(dimension_filters.keys())
+    for frontend_key in filter_keys_to_process:
+        filter_value = dimension_filters[frontend_key]
+        internal_path = None
+        for k, v in key_map.items():
+            if v == frontend_key:
+                internal_path = k
+                break
+        if internal_path:
+            if filter_value:
+                parts = filter_value.split("-")
+                mdx_member_parts = "".join(f"&[{part}]" for part in parts)
+                full_member_mdx = f"{internal_path}.{mdx_member_parts}"
+                li.append(full_member_mdx)
+            del dimension_filters[frontend_key]
+    if li:
+        dimension_filter = ",".join(li)
                 
     return mdx_template.format(
         measures=measure,
