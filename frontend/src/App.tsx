@@ -1307,7 +1307,10 @@ export default function OLAPOperations() {
                 {apiData.map((row, rIdx) => (
                   <TableRow key={`row-${rIdx}`}>
                     {effectiveTableHeaders.map(hKey => (
-                      <TableCell key={`${rIdx}-${hKey}`} className={`text-${typeof row[hKey] === 'number' ? 'right' : 'left'} whitespace-nowrap px-2 py-1`}>
+                      <TableCell
+                        key={`${rIdx}-${hKey}`}
+                        className={`text-center align-middle whitespace-nowrap px-2 py-1`}
+                      >
                         {row.hasOwnProperty(hKey) && row[hKey] !== null && row[hKey] !== undefined
                           ? (typeof row[hKey] === 'number' ? row[hKey].toLocaleString() : row[hKey].toString())
                           : '(Trống)'}
